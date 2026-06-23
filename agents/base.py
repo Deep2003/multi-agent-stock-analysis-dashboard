@@ -149,6 +149,15 @@ def normalize_recommendation(raw_rec: str) -> str:
     return "Hold"
 
 
+def _cap(text: str, max_chars: int) -> str:
+    """Hard-cap a text string to max_chars characters to control LLM input token cost."""
+    if not text:
+        return text or ""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "..."
+
+
 def clear_agent_logs():
     """Clears the agent execution log file to prepare for a fresh analysis run."""
     log_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "agent_run_log.json")

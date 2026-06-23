@@ -1,7 +1,7 @@
 from datetime import datetime
 from langchain_core.messages import AIMessage
 from state import AgentState
-from agents.base import get_expert_report
+from agents.base import get_expert_report, _cap
 
 def sentiment_node(state: AgentState):
     """Expert Node: Media & Sentiment Expert.
@@ -23,24 +23,18 @@ def sentiment_node(state: AgentState):
     current_date_str = datetime.now().strftime("%B %d, %Y")
     
     system_prompt = (
-        f"You are the Media & Sentiment Expert on our institutional investment committee.\n"
-        f"Analyze stock headlines and news topics to evaluate public retail narrative and sentiment.\n"
-        f"MATERIALITY & RECENCY THRESHOLD: It is {current_date_str}. When scanning media and sentiment, "
-        f"ignore all historical news prior to 2025. Furthermore, apply a scale filter: for mega-cap companies "
-        f"(>$1 Trillion), ignore small-scale retail or ETF purchases (e.g., $50M - $100M trades) as they do not move "
-        f"the needle. Focus only on massive institutional flow, hyperscaler capex announcements, and macro-level sentiment drivers "
-        f"relevant to today.\n"
-        f"WALL STREET CONSENSUS COMPARISON: You must evaluate the news and retail sentiment against the Wall Street analyst consensus ratings "
-        f"and price targets provided in `analyst_ratings`. Explicitly identify if the media sentiment diverges from "
-        f"the institutional consensus (e.g. news is highly bearish, but 80% of institutional analysts still maintain a Buy rating).\n"
-        f"TOOL ACCESS: You have been provided with baseline pre-fetched data in your context. Review this first. "
-        f"If you need specific deep context or updated numbers not present in this baseline, you are authorized to invoke "
-        f"the search tool (web_search). Do not abuse this permission; only query if the baseline is insufficient."
+        f"You are the Media & Sentiment Expert on our institutional investment committee. Today: {current_date_str}.\n"
+        f"Analyze headlines and news to evaluate public retail narrative and sentiment.\n"
+        f"RECENCY FILTER: Ignore news prior to 2025. For mega-caps (>$1T), ignore small retail/ETF trades "
+        f"(<$100M). Focus on institutional flows, hyperscaler capex, and macro-level sentiment drivers.\n"
+        f"CONSENSUS DIVERGENCE: Compare news/retail sentiment against Wall Street analyst consensus in analyst_ratings. "
+        f"Flag explicitly if media is bearish while institutions remain bullish (or vice versa).\n"
+        f"Use only information from the pre-fetched data. Do not invent analyst targets or cite news you cannot see."
     )
     
     user_prompt = (
-        f"Pre-fetched news narrative for {ticker.upper()}:\n{raw_data}\n\n"
-        f"Pre-fetched Wall Street consensus targets for {ticker.upper()}:\n{analyst_ratings}"
+        f"Pre-fetched news narrative for {ticker.upper()}:\n{_cap(raw_data, 600)}\n\n"
+        f"Pre-fetched Wall Street consensus for {ticker.upper()}:\n{_cap(analyst_ratings, 300)}"
     )
     
     if my_critique:

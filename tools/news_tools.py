@@ -46,18 +46,21 @@ def fetch_sentiment_news_data(ticker: str) -> str:
 def fetch_roadmap_data(ticker: str) -> str:
     """Programmatically pre-fetches future-facing product roadmaps, earnings call highlights,
     upcoming product lines, and R&D pipelines using targeted keyword search via DDG.
+    Capped at 5 results with 150-char body snippets to minimise LLM input tokens.
     """
     try:
         query = f"{ticker.upper()} stock roadmap upcoming product pipeline earnings R&D next-generation"
         with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=8))
+            results = list(ddgs.text(query, max_results=5))
             if not results:
                 return f"No direct future roadmap press releases found for {ticker.upper()}."
             summary = f"--- Future Product Pipeline & R&D Indicators for {ticker.upper()} ---\n"
             headlines = []
             for r in results:
-                headlines.append(f"- Headline: {r.get('title')}\n  Context: {r.get('body')[:200]}\n  Link: {r.get('href')}")
+                body_snippet = (r.get('body') or '')[:150]
+                headlines.append(f"- Headline: {r.get('title')}\n  Context: {body_snippet}\n  Link: {r.get('href')}")
             summary += "\n\n".join(headlines)
             return summary
     except Exception as e:
         return f"Error gathering product roadmap indicators: {str(e)}"
+

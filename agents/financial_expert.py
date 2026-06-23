@@ -1,7 +1,7 @@
 from datetime import datetime
 from langchain_core.messages import AIMessage
 from state import AgentState
-from agents.base import get_expert_report
+from agents.base import get_expert_report, _cap
 
 def financial_node(state: AgentState):
     """Expert Node: Financial Expert.
@@ -22,22 +22,16 @@ def financial_node(state: AgentState):
     current_date_str = datetime.now().strftime("%B %d, %Y")
     
     system_prompt = (
-        f"You are the Senior Financial Expert on our institutional investment committee.\n"
-        f"Analyze the quantitative health, PE, growth, margins, and SMA crossover momentum of the stock.\n"
-        f"VALUATION LOGIC CONSTRAINT: Today's exact date is {current_date_str}. Ground your analysis completely "
-        f"in the current pricing climate. Cross-reference historical charts against major stock splits that occurred "
-        f"prior to today (e.g., NVIDIA's 10-for-1 split in June 2024). Ensure your valuation logic treats split-adjusted "
-        f"pricing correctly rather than framing a post-split price as an early-stage baseline.\n"
-        f"Furthermore, when analyzing severe multiple compression (e.g., a trailing P/E dropping from 45x to a forward P/E "
-        f"of 17x while the stock price remains high), you must attribute this correctly. Drastic multiple compression is driven "
-        f"by massive expectations of top-line revenue and EPS explosions, NOT just minor gross margin expansions. Your qualitative "
-        f"narrative must accurately reflect the mathematical realities of EPS growth required to compress that multiple.\n"
-        f"TOOL ACCESS: You have been provided with baseline pre-fetched data in your context. Review this first. "
-        f"If you need specific deep context or updated numbers not present in this baseline, you are authorized to invoke "
-        f"the search tool (web_search). Do not abuse this permission; only query if the baseline is insufficient."
+        f"You are the Senior Financial Expert on our institutional investment committee. Today: {current_date_str}.\n"
+        f"Analyze quantitative health: P/E, EPS growth, revenue, margins, debt, and SMA momentum.\n"
+        f"SPLIT ADJUSTMENT: Account for stock splits before today (e.g., NVDA 10-for-1 in June 2024). "
+        f"Treat post-split prices correctly — do not frame a split-adjusted price as a baseline anomaly.\n"
+        f"MULTIPLE COMPRESSION: When trailing P/E far exceeds forward P/E while price is high, correctly attribute "
+        f"this to massive EPS/revenue growth expectations — not minor margin expansion.\n"
+        f"Use only numbers from the pre-fetched data below. Do not invent prices, P/E, EPS, or revenue figures."
     )
     
-    user_prompt = f"Pre-fetched financials for {ticker.upper()}:\n{raw_data}"
+    user_prompt = f"Pre-fetched financials for {ticker.upper()}:\n{_cap(raw_data, 800)}"
     if my_critique:
         user_prompt += f"\n\n[PEER AUDIT CRITIQUE - Severity: {my_critique['severity']}]\n"
         user_prompt += f"The Risk Management Expert has flagged your initial report with this critique:\n"

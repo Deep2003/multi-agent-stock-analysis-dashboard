@@ -1,7 +1,7 @@
 from datetime import datetime
 from langchain_core.messages import AIMessage
 from state import AgentState
-from agents.base import get_risk_audit_report
+from agents.base import get_risk_audit_report, _cap
 
 def risk_node(state: AgentState):
     """Expert Node: Joint Board Evaluation & Dynamic Routing (The Cross-Talk Hub).
@@ -19,47 +19,39 @@ def risk_node(state: AgentState):
     sentiment_r = expert_reports.get("sentiment", {})
     macro_r = expert_reports.get("macro", {})
     
+    # Cap core_analysis at 300 chars per expert — auditor needs enough to spot
+    # factual errors and logical flaws, not the full essay (saves ~1,200 input tokens).
     peer_context = (
         "Here are the findings compiled by the other experts:\n\n"
-        f"=== FINANCIAL EXPERT REPORT ===\n"
-        f"Recommendation: {financial_r.get('recommendation', 'N/A')}\n"
-        f"Price Target: {financial_r.get('price_target', 'N/A')}\n"
-        f"Core Analysis: {financial_r.get('core_analysis', 'N/A')}\n\n"
-        f"=== TECH & PRODUCT EXPERT REPORT ===\n"
-        f"Recommendation: {tech_r.get('recommendation', 'N/A')}\n"
-        f"Price Target: {tech_r.get('price_target', 'N/A')}\n"
-        f"Core Analysis: {tech_r.get('core_analysis', 'N/A')}\n\n"
-        f"=== SENTIMENT EXPERT REPORT ===\n"
-        f"Recommendation: {sentiment_r.get('recommendation', 'N/A')}\n"
-        f"Core Analysis: {sentiment_r.get('core_analysis', 'N/A')}\n\n"
-        f"=== MACRO & INDUSTRY EXPERT REPORT ===\n"
-        f"Recommendation: {macro_r.get('recommendation', 'N/A')}\n"
-        f"Core Analysis: {macro_r.get('core_analysis', 'N/A')}\n"
+        f"=== FINANCIAL EXPERT ===\n"
+        f"Rec: {financial_r.get('recommendation', 'N/A')} | Target: {financial_r.get('price_target', 'N/A')}\n"
+        f"Core: {_cap(financial_r.get('core_analysis', 'N/A'), 300)}\n\n"
+        f"=== TECH & PRODUCT EXPERT ===\n"
+        f"Rec: {tech_r.get('recommendation', 'N/A')} | Target: {tech_r.get('price_target', 'N/A')}\n"
+        f"Core: {_cap(tech_r.get('core_analysis', 'N/A'), 300)}\n\n"
+        f"=== SENTIMENT EXPERT ===\n"
+        f"Rec: {sentiment_r.get('recommendation', 'N/A')}\n"
+        f"Core: {_cap(sentiment_r.get('core_analysis', 'N/A'), 300)}\n\n"
+        f"=== MACRO & INDUSTRY EXPERT ===\n"
+        f"Rec: {macro_r.get('recommendation', 'N/A')}\n"
+        f"Core: {_cap(macro_r.get('core_analysis', 'N/A'), 300)}\n"
     )
     
     current_date_str = datetime.now().strftime("%B %d, %Y")
     
     system_prompt = (
-        "You are the Joint Board of our institutional investment committee, managed jointly by the Supervisor Agent and the Risk Management Expert.\n"
-        f"Today's date is {current_date_str}.\n"
-        "Your first job is to act as an internal auditor and cross-examiner. Inspect all 4 completed expert reports TOGETHER. "
-        "Look for logical flaws, overly optimistic assumptions, unbacked claims, or missing risks. Log targeted critiques in audit_log.\n\n"
-        "SEVERITY ESCALATION RULES — READ CAREFULLY:\n"
-        "  - HIGH severity: ONLY for hard, verifiable factual errors. A number that directly contradicts the pre-fetched ground truth data. "
-        "Fabricated analyst targets. Citing products/chips that are demonstrably outdated as 'current'. "
-        "HIGH critiques trigger a full expert re-run, so use them SPARINGLY and only when CERTAIN.\n"
-        "  - MEDIUM severity: Analytical framing issues, overly bullish/bearish tone without data support, missing risk factors. "
-        "MEDIUM critiques are logged in the final report but do NOT trigger a re-run.\n"
-        "  - LOW severity: Minor stylistic concerns, preference differences. Log these but do NOT flag them for revision.\n\n"
-        "FACTUAL INTEGRITY AUDIT: Cross-examine quantitative claims in expert reports against the pre-fetched raw data. "
-        "Flag HIGH only if an expert states a specific number (price, P/E, revenue, margin, EPS) that DIRECTLY CONTRADICTS the pre-fetched data block — "
-        "not just because they rounded or estimated differently. "
-        "Flag HIGH if an expert fabricates analyst price targets not present in the analyst_ratings block.\n\n"
-        "AUDIT TRIPWIRES (HIGH severity only if clearly violated):\n"
-        "  1. Tech Expert: Flag HIGH only if they explicitly cite Hopper/Blackwell as 'upcoming/future' when discussing current-gen chips.\n"
-        "  2. Financial Expert: Flag HIGH only if they attribute drastic P/E multiple compression entirely to margin expansion, ignoring EPS/revenue growth math.\n\n"
-        "CROSS-TALK: Identify cross-domain dependencies. Log them in cross_talk_log. These are informational \u2014 they do NOT trigger expert re-runs.\n\n"
-        "Your final job is to compile your standalone risk analysis on market volatility, Beta, short float %, regulatory threats, and options pricing proxy."
+        f"You are the Risk & Audit Expert on our institutional investment committee. Today: {current_date_str}.\n"
+        "ROLE: Internal auditor. Inspect all 4 expert reports for logical flaws, unbacked claims, and missing risks.\n\n"
+        "SEVERITY RULES:\n"
+        "  HIGH: ONLY hard factual errors — a number that directly contradicts pre-fetched ground truth. "
+        "Fabricated analyst targets. Citing outdated chips as current. HIGH triggers expert re-run; use SPARINGLY.\n"
+        "  MEDIUM: Framing issues, unsupported tone, missing risk factors. Logged but no re-run.\n"
+        "  LOW: Minor stylistic issues. Logged, no action.\n\n"
+        "FACTUAL AUDIT: Flag HIGH only if an expert cites a specific number (price, P/E, EPS, revenue, margin) "
+        "that directly contradicts the pre-fetched data — not for rounding differences.\n"
+        "Flag HIGH if an expert fabricates analyst price targets not in analyst_ratings.\n\n"
+        "CROSS-TALK: Log cross-domain dependencies in cross_talk_log (informational only, no re-runs).\n\n"
+        "STANDALONE RISK ANALYSIS: Assess volatility (Beta), short float %, regulatory threats, options implied risk."
     )
     
     financial_data = state.get("financial_data", "")

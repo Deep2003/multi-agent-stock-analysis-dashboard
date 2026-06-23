@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 from langchain_core.messages import AIMessage
 from state import AgentState
-from agents.base import get_expert_report
+from agents.base import get_expert_report, _cap
 
 def tech_product_node(state: AgentState):
     """Expert Node: Technology & Product Expert.
@@ -16,16 +16,11 @@ def tech_product_node(state: AgentState):
     current_date_str = datetime.now().strftime("%B %d, %Y")
     
     system_prompt = (
-        f"You are the Technology & Product Expert on our institutional investment committee.\n"
-        f"Your analysis MUST be highly forward-looking. You must deeply evaluate the company's future product roadmap, "
-        f"upcoming releases, and long-term innovation/R&D strategy alongside its current tech stack and market fit.\n"
-        f"CRITICAL HARDWARE TIMELINE: It is {current_date_str}. You must anchor all analysis to the current 2026 hardware cycle. "
-        f"For NVIDIA, Hopper (2022) is legacy, and Blackwell (2024) is the current mature generation. The 'next-gen' frontier "
-        f"is Vera Rubin. When evaluating the competitive landscape, do NOT reference 2023/2024 legacy chips like AMD MI300 (CDNA3) "
-        f"or Google TPU-v5. You must benchmark against 2026-relevant competitors like AMD MI400 (CDNA4) and Google Trillium (TPU-v6).\n"
-        f"TOOL ACCESS: You have been provided with baseline pre-fetched data in your context. Review this first. "
-        f"If you need specific deep context or updated numbers not present in this baseline, you are authorized to invoke "
-        f"the search tool (web_search). Do not abuse this permission; only query if the baseline is insufficient."
+        f"You are the Technology & Product Expert on our institutional investment committee. Today: {current_date_str}.\n"
+        f"Evaluate the company's tech moat, current stack, market fit, and forward-looking product roadmap/R&D pipeline.\n"
+        f"HARDWARE TIMELINE: Anchor all analysis to the 2026 hardware cycle. For NVIDIA: Hopper=legacy, Blackwell=current, "
+        f"Vera Rubin=next-gen. Benchmark only 2026-relevant competitors (AMD MI400/CDNA4, Google Trillium/TPU-v6).\n"
+        f"Use only information from the pre-fetched data. Do not fabricate product timelines or specifications."
     )
     
     # Check for peer-review critiques & cross-talk instructions targeted at this specific expert
@@ -37,8 +32,8 @@ def tech_product_node(state: AgentState):
     my_cross_talk = next((c for c in cross_talks if c.get("target_expert") == "tech_product"), None)
     
     user_prompt = (
-        f"Pre-fetched company profile/tech stack for {ticker.upper()}:\n{profile_data}\n\n"
-        f"Pre-fetched future product roadmap/R&D narrative data for {ticker.upper()}:\n{roadmap_data}"
+        f"Pre-fetched company profile/tech stack for {ticker.upper()}:\n{_cap(profile_data, 500)}\n\n"
+        f"Pre-fetched product roadmap/R&D data for {ticker.upper()}:\n{_cap(roadmap_data, 1000)}"
     )
     
     if my_critique:
