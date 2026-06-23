@@ -1,0 +1,11 @@
+langchain
+langchain-core
+langchain-openai
+langgraph
+yfinance
+selenium
+webdriver-manager
+pydantic
+fastapi
+uvicorn
+duckduckgo-search
