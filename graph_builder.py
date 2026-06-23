@@ -6,6 +6,7 @@ from agents.financial_expert import financial_node
 from agents.tech_expert import tech_product_node
 from agents.sentiment_expert import sentiment_node
 from agents.macro_expert import macro_node
+from agents.technical import technical_node
 from agents.risk_analyst import risk_node
 
 def route_active_agent(state: AgentState):
@@ -35,7 +36,7 @@ def route_from_risk(state: AgentState):
     for c in critiques:
         target = c.get("target_expert")
         severity = c.get("severity", "Low").lower()
-        if target in ["financial", "tech_product", "sentiment", "macro"] and severity == "high":
+        if target in ["financial", "tech_product", "sentiment", "macro", "technical"] and severity == "high":
             flagged.append(target)
             
     flagged = list(set(flagged))
@@ -56,6 +57,7 @@ workflow.add_node("financial", financial_node)
 workflow.add_node("tech_product", tech_product_node)
 workflow.add_node("sentiment", sentiment_node)
 workflow.add_node("macro", macro_node)
+workflow.add_node("technical", technical_node)
 workflow.add_node("risk", risk_node)
 workflow.add_node("synthesis", synthesis_node)
 
@@ -64,17 +66,19 @@ workflow.set_entry_point("supervisor")
 
 workflow.add_edge("supervisor", "pre_fetch")
 
-# Phase 1: Fork to the first 4 experts (Financial, Tech/Product, Sentiment, Macro)
+# Phase 1: Fork to the first 5 experts (Financial, Tech/Product, Sentiment, Macro, Technical)
 workflow.add_edge("pre_fetch", "financial")
 workflow.add_edge("pre_fetch", "tech_product")
 workflow.add_edge("pre_fetch", "sentiment")
 workflow.add_edge("pre_fetch", "macro")
+workflow.add_edge("pre_fetch", "technical")
 
 # Phase 2: Fan-in to Risk Expert (Auditor)
 workflow.add_edge("financial", "risk")
 workflow.add_edge("tech_product", "risk")
 workflow.add_edge("sentiment", "risk")
 workflow.add_edge("macro", "risk")
+workflow.add_edge("technical", "risk")
 
 # Phase 3 & 4: Conditional edge from risk node
 workflow.add_conditional_edges(
@@ -85,6 +89,7 @@ workflow.add_conditional_edges(
         "tech_product": "tech_product",
         "sentiment": "sentiment",
         "macro": "macro",
+        "technical": "technical",
         "synthesis": "synthesis"
     }
 )

@@ -55,7 +55,7 @@ def macro_node(state: AgentState):
         {"role": "user", "content": user_prompt}
     ]
     
-    report, loop_msgs = get_expert_report("macro", system_prompt, messages_payload)
+    report, loop_msgs = get_expert_report("macro", system_prompt, messages_payload, api_key=state.get("api_key"), selected_model=state.get("selected_model", "auto"))
     
     reports = dict(state.get("expert_reports", {}))
     reports["macro"] = report

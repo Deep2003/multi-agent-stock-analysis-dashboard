@@ -264,6 +264,7 @@ class AgentState(TypedDict):
     """The expanded state tracking 6 specialized data blocks pre-fetched from yfinance and search APIs."""
     messages: Annotated[list, add_messages]
     active_agent: Annotated[str, merge_active_agent]
+    api_key: str
     ticker: str
     financial_data: str
     company_profile: str
@@ -274,8 +275,12 @@ class AgentState(TypedDict):
     risk_metrics: str
     industry_metrics: str
     analyst_ratings: str
+    insider_data: str
+    reddit_data: str
+    technical_data: str
     expert_reports: Annotated[dict, merge_expert_reports] # Stores structured dictionary payloads of 5 experts
     revision_count: int    # Enforces a strict loop guard in the supervisor review cycle
+    selected_model: str
     current_price: float
     price_target: float
     implied_movement_pct: float

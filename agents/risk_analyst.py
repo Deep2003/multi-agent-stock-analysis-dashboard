@@ -70,7 +70,7 @@ def risk_node(state: AgentState):
     ]
     
     # Run the board evaluation/auditor invoker
-    report = get_risk_audit_report(system_prompt, messages_payload)
+    report = get_risk_audit_report(system_prompt, messages_payload, api_key=state.get("api_key"), selected_model=state.get("selected_model", "auto"))
     
     reports = dict(state.get("expert_reports", {}))
     reports["risk"] = report

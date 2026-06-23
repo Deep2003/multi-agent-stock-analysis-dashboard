@@ -232,7 +232,7 @@ def synthesis_node(state: AgentState):
     res_summary = ""
 
     try:
-        response = invoke_with_retry(llm, messages, agent_name="supervisor")
+        response = invoke_with_retry(llm, messages, agent_name="supervisor", api_key=state.get("api_key"))
         text = response.content.strip()
         # Strip any accidental markdown code fences
         json_text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)

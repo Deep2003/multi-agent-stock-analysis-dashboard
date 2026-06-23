@@ -2,8 +2,9 @@ import os
 import sys
 import json
 import re
-from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+import statistics
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -15,7 +16,7 @@ import asyncio
 import time
 
 # Retrieve configuration from base layer
-model_name = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
+model_name = os.environ.get("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct (w/ Fallbacks)")
 
 app_server = FastAPI(
     title="Agentic Stock Analyst Full-Stack Server",
@@ -31,8 +32,67 @@ app_server.add_middleware(
 )
 
 
+# Simple log file for tracking execution runtimes by model
+RUNTIME_LOG_FILE = "runtime_logs.json"
+
+def log_runtime(model_name: str, duration: float):
+    """Appends execution time to a local JSON log."""
+    logs = []
+    if os.path.exists(RUNTIME_LOG_FILE):
+        try:
+            with open(RUNTIME_LOG_FILE, "r") as f:
+                logs = json.load(f)
+        except Exception:
+            logs = []
+            
+    # Resolve the model name from "auto" to something descriptive if needed, 
+    # but the frontend passes the explicit free model or "auto".
+    logs.append({
+        "timestamp": time.time(),
+        "model": model_name,
+        "duration": duration
+    })
+    
+    try:
+        with open(RUNTIME_LOG_FILE, "w") as f:
+            json.dump(logs, f, indent=2)
+    except Exception:
+        pass
+
+@app_server.get("/api/runtimes")
+async def get_average_runtimes():
+    """Calculates and returns the average execution time per model."""
+    if not os.path.exists(RUNTIME_LOG_FILE):
+        return JSONResponse({"averages": {}})
+        
+    try:
+        with open(RUNTIME_LOG_FILE, "r") as f:
+            logs = json.load(f)
+            
+        model_times = {}
+        for entry in logs:
+            m = entry.get("model", "auto")
+            d = entry.get("duration", 0)
+            if d > 0:
+                if m not in model_times:
+                    model_times[m] = []
+                model_times[m].append(d)
+                
+        averages = {}
+        for m, times in model_times.items():
+            if len(times) > 0:
+                averages[m] = round(statistics.mean(times), 1)
+                
+        return JSONResponse({"averages": averages})
+    except Exception as e:
+        return JSONResponse({"averages": {}})
+
 @app_server.get("/api/stream")
-async def stream_analysis(query: str = Query(..., description="The stock query statement to analyze.")):
+async def stream_analysis(
+    query: str = Query(..., description="The stock query statement to analyze."),
+    api_key: str = Query(None, description="Optional OpenRouter API Key for fallback"),
+    model: str = Query("auto", description="Selected OpenRouter model")
+):
     """Server-Sent Events (SSE) streaming endpoint.
     Runs the LangGraph execution workflow and pushes live logs, metrics,
     state handoffs, and raw expert report Pydantic payloads back in real-time.
@@ -40,6 +100,8 @@ async def stream_analysis(query: str = Query(..., description="The stock query s
     async def event_generator():
         initial_state = {
             "messages": [HumanMessage(content=query)],
+            "api_key": api_key,
+            "selected_model": model,
             "active_agent": "supervisor",
             "ticker": "",
             "financial_data": "",
@@ -51,6 +113,9 @@ async def stream_analysis(query: str = Query(..., description="The stock query s
             "risk_metrics": "",
             "industry_metrics": "",
             "analyst_ratings": "",
+            "insider_data": "",
+            "reddit_data": "",
+            "technical_data": "",
             "expert_reports": {},
             "revision_count": 0,
             "current_price": 0.0,
@@ -64,6 +129,7 @@ async def stream_analysis(query: str = Query(..., description="The stock query s
         register_subscriber(sub)
         
         async def run_graph():
+            start_time = time.time()
             try:
                 async for event in app.astream(initial_state, stream_mode="values"):
                     messages = event.get("messages", [])
@@ -88,12 +154,14 @@ async def stream_analysis(query: str = Query(..., description="The stock query s
                         eps_match = re.search(r"EPS \(Trailing\):\s*([0-9\.-]+)", financial_raw)
                         price_match = re.search(r"Current Price:\s*\$([0-9\.]+)", financial_raw)
                         sma50_match = re.search(r"50-Day SMA:\s*\$([0-9\.]+)", financial_raw)
+                        sma200_match = re.search(r"200-Day SMA:\s*\$([0-9\.]+)", financial_raw)
                         
                         if pe_match: metrics["pe"] = pe_match.group(1)
                         if mc_match: metrics["market_cap"] = mc_match.group(1)
                         if eps_match: metrics["eps"] = eps_match.group(1)
                         if price_match: metrics["price"] = price_match.group(1)
                         if sma50_match: metrics["sma50"] = sma50_match.group(1)
+                        if sma200_match: metrics["sma200"] = sma200_match.group(1)
 
                     payload = {
                         "event": "update",
@@ -110,6 +178,9 @@ async def stream_analysis(query: str = Query(..., description="The stock query s
                     }
                     sub.put(payload)
                     
+                total_duration = time.time() - start_time
+                log_runtime(model, total_duration)
+                
                 sub.put({"event": "complete", "message": "Institutional committee analysis completed successfully!"})
             except Exception as e:
                 sub.put({"event": "error", "message": str(e)})
@@ -117,7 +188,7 @@ async def stream_analysis(query: str = Query(..., description="The stock query s
                 sub.put(None)
                 
         graph_task = asyncio.create_task(run_graph())
-        deadline = time.monotonic() + 240  # 4-minute hard wall-clock limit
+        deadline = time.monotonic() + 600  # 10-minute hard wall-clock limit
         
         try:
             while True:
@@ -132,9 +203,9 @@ async def stream_analysis(query: str = Query(..., description="The stock query s
                 if graph_task.done() and sub.q.empty():
                     break
                 
-                # Enforce overall 4-minute deadline
+                # Enforce overall 10-minute deadline
                 if time.monotonic() > deadline:
-                    msg = "Analysis timed out after 4 minutes. The model may be overloaded — please retry."
+                    msg = "Analysis timed out after 10 minutes. Rate limits on the free API are causing delays — please try again."
                     yield f"data: {json.dumps({'event': 'error', 'message': msg})}\n\n"
                     graph_task.cancel()
                     break

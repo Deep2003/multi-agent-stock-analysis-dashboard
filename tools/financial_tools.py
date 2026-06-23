@@ -1,5 +1,7 @@
 import yfinance as yf
+from tools.retry_utils import with_retry
 
+@with_retry(max_retries=3)
 def fetch_financial_data(ticker: str) -> str:
     """Programmatic backend fetcher for quantitative financial health metrics."""
     try:
@@ -38,16 +40,40 @@ def fetch_financial_data(ticker: str) -> str:
             if v is None:
                 output.append(f"- {k}: N/A")
             elif k == "Market Cap" and isinstance(v, (int, float)):
-                output.append(f"- {k}: ${v:,}")
-            elif k in ["Revenue Growth", "Profit Margin"] and isinstance(v, (int, float)):
-                output.append(f"- {k}: {v * 100:.2f}%")
+                output.append(f"- {k}: ${v / 1e9:.2f} Billion")
+            elif "Margin" in k or "Growth" in k:
+                output.append(f"- {k}: {v * 100:.2f}%" if isinstance(v, float) else f"- {k}: {v}")
             elif k in ["Trailing P/E", "Forward P/E", "EPS (Trailing)", "Debt-to-Equity", "Current Ratio"] and isinstance(v, (int, float)):
                 output.append(f"- {k}: {v:.2f}")
             else:
                 output.append(f"- {k}: {v}")
         return "\n".join(output)
     except Exception as e:
-        return f"Error fetching quantitative financials: {e}"
+        return f"Error fetching financial data for {ticker}: {str(e)}"
+
+@with_retry(max_retries=3)
+def fetch_insider_trading(ticker: str) -> str:
+    """Fetches recent executive insider buy/sell transactions via yfinance."""
+    try:
+        stock = yf.Ticker(ticker)
+        insider = stock.insider_transactions
+        if insider is None or insider.empty:
+            return f"No recent insider trading transactions found for {ticker.upper()}."
+            
+        # Get the 5 most recent transactions
+        recent = insider.head(5)
+        output = [f"--- Recent Insider Transactions for {ticker.upper()} ---"]
+        for idx, row in recent.iterrows():
+            date = str(row.get('Start Date', 'Unknown')).split(' ')[0]
+            insider_name = row.get('Insider', 'Unknown Executive')
+            shares = row.get('Shares', 0)
+            val = row.get('Value', 0)
+            action = "BOUGHT" if shares > 0 else "SOLD"
+            output.append(f"- {date}: {insider_name} {action} {abs(shares):,} shares (Value: ${abs(val):,.2f})")
+            
+        return "\n".join(output)
+    except Exception as e:
+        return f"Error fetching insider trading data for {ticker}: {str(e)}"
 
 
 def fetch_company_profile(ticker: str) -> str:

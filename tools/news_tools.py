@@ -1,6 +1,7 @@
 import urllib.parse
 from duckduckgo_search import DDGS
 from langchain_core.tools import tool
+from tools.retry_utils import with_retry
 
 import threading
 import time
@@ -8,6 +9,7 @@ import time
 _search_lock = threading.Lock()
 
 @tool
+@with_retry(max_retries=3)
 def web_search(query: str) -> str:
     """Search the web using DuckDuckGo to retrieve news, recent earnings call highlights,
     R&D/roadmap progress, or comparative industry fundamentals. Use this tool if the baseline
@@ -28,6 +30,7 @@ def web_search(query: str) -> str:
             return "Search failed. Rely on your pre-fetched context."
 
 
+@with_retry(max_retries=3)
 def fetch_sentiment_news_data(ticker: str) -> str:
     """Lightweight DDG News baseline fetcher (replaces heavy Selenium scraper)."""
     try:
@@ -43,6 +46,7 @@ def fetch_sentiment_news_data(ticker: str) -> str:
         return f"Error fetching news narrative for {ticker}: {str(e)}"
 
 
+@with_retry(max_retries=3)
 def fetch_roadmap_data(ticker: str) -> str:
     """Programmatically pre-fetches future-facing product roadmaps, earnings call highlights,
     upcoming product lines, and R&D pipelines using targeted keyword search via DDG.
@@ -64,3 +68,21 @@ def fetch_roadmap_data(ticker: str) -> str:
     except Exception as e:
         return f"Error gathering product roadmap indicators: {str(e)}"
 
+@with_retry(max_retries=3)
+def fetch_reddit_sentiment(ticker: str) -> str:
+    """Scrapes recent retail sentiment from Reddit investing communities via DDG."""
+    try:
+        query = f"{ticker.upper()} stock site:reddit.com/r/wallstreetbets OR site:reddit.com/r/stocks"
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=5))
+            if not results:
+                return f"No recent Reddit discussions found for {ticker.upper()}."
+            
+            summary = [f"--- Retail Sentiment (Reddit) for {ticker.upper()} ---"]
+            for r in results:
+                title = r.get('title', '')
+                body = (r.get('body') or '')[:150]
+                summary.append(f"Title: {title}\nSnippet: {body}...\n")
+            return "\n".join(summary)
+    except Exception as e:
+        return f"Error fetching Reddit sentiment for {ticker}: {str(e)}"

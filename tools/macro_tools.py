@@ -1,5 +1,7 @@
 import yfinance as yf
+from tools.retry_utils import with_retry
 
+@with_retry(max_retries=3)
 def fetch_macro_data(ticker: str) -> str:
     """Programmatic backend fetcher for baseline macroeconomic indices comparison."""
     try:

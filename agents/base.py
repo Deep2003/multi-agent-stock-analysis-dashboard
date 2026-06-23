@@ -7,26 +7,35 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from state import ExpertReport, RiskExpertOutput, TechExpertReport, MacroExpertReport, SentimentExpertReport
 
-# Best free model: fastest latency (sub-1s), high quality analytical reasoning.
-# Override via OPENROUTER_MODEL env var if needed.
-model_name = os.environ.get("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
-
 # Use explicit httpx.Timeout so that 'read' fires if the model stops streaming
 # for 25s (catches hanging responses that never close the connection).
 _http_timeout = httpx.Timeout(connect=10.0, read=25.0, write=25.0, pool=5.0)
 
-llm = ChatOpenAI(
-    model=model_name,
-    api_key=os.environ.get("OPENROUTER_API_KEY"),
-    base_url="https://openrouter.ai/api/v1",
-    temperature=0.0,
-    timeout=_http_timeout,
-    streaming=True,
-    default_headers={
-        "HTTP-Referer": "https://github.com/langchain-ai/langchain",
-        "X-Title": "LangChain Agentic Stock Analyst",
-    }
-)
+def _create_llm(model_id: str, api_key: str = None):
+    return ChatOpenAI(
+        model=model_id,
+        api_key=api_key or os.environ.get("OPENROUTER_API_KEY"),
+        base_url="https://openrouter.ai/api/v1",
+        temperature=0.0,
+        timeout=_http_timeout,
+        streaming=True,
+        max_retries=0,
+        default_headers={
+            "HTTP-Referer": "https://github.com/langchain-ai/langchain",
+            "X-Title": "LangChain Agentic Stock Analyst",
+        }
+    )
+
+# Free models on OpenRouter (validated 2026-06)
+FREE_MODELS = [
+    "meta-llama/llama-3.3-70b-instruct:free",    # Primary
+    "google/gemma-3-27b-it:free",                  # Fallback 1
+    "mistralai/mistral-7b-instruct:free",          # Fallback 2
+    "microsoft/phi-3-medium-128k-instruct:free",   # Fallback 3
+    "google/gemma-4-31b-it:free",                  # Fallback 4
+]
+
+llm = [_create_llm(m) for m in FREE_MODELS]
 
 import time
 import random
@@ -41,6 +50,7 @@ class TokenStreamSubscriber:
         self.q.put(val)
 
 _subscribers_lock = threading.Lock()
+_api_lock = threading.Lock()
 active_subscribers = set()
 
 def register_subscriber(sub):
@@ -66,7 +76,7 @@ class StreamingCallback(BaseCallbackHandler):
 _request_lock = threading.Lock()
 _last_request_time = 0.0
 
-def invoke_with_retry(llm_inst, messages, max_retries=5, initial_delay=3.0, backoff_factor=2.0, agent_name=None):
+def invoke_with_retry(llm_inst, messages, max_retries=5, initial_delay=3.0, backoff_factor=2.0, agent_name=None, api_key=None, selected_model="auto"):
     """Invokes the LLM instance with paced parallel execution (1.0s spacing)
     and exponential backoff with jitter to handle 429 and timeout errors.
     The httpx.Timeout on the LLM client (read=30s) is the primary hang-killer:
@@ -91,43 +101,80 @@ def invoke_with_retry(llm_inst, messages, max_retries=5, initial_delay=3.0, back
     # 2. Invoke LLM with retry on rate limits and timeouts
     delay = initial_delay
     last_exception = None
+    
+    if selected_model and selected_model != "auto":
+        models_to_try = [_create_llm(selected_model, api_key=api_key)]
+    elif api_key:
+        models_to_try = [_create_llm(m, api_key=api_key) for m in FREE_MODELS]
+    else:
+        models_to_try = llm_inst if isinstance(llm_inst, list) else [llm_inst]
+    
     for attempt in range(max_retries):
-        try:
-            config = {}
-            if agent_name:
-                config["callbacks"] = [StreamingCallback(agent_name)]
-            res = llm_inst.invoke(messages, config=config)
-            _last_request_time = time.time()
-            return res
-        except Exception as e:
-            last_exception = e
-            err_str = str(e)
-            is_rate_limit = (
-                "too many requests" in err_str.lower() or
-                "429" in err_str or
-                "rate limit" in err_str.lower() or
-                "provider returned error" in err_str.lower() or
-                "limit exceeded" in err_str.lower()
-            )
-            is_timeout = (
-                "timed out" in err_str.lower() or
-                "timeout" in err_str.lower() or
-                "read timeout" in err_str.lower() or
-                isinstance(e, httpx.ReadTimeout) or
-                isinstance(e, httpx.ConnectTimeout)
-            )
-            
-            if (is_rate_limit or is_timeout) and attempt < max_retries - 1:
-                jitter = random.uniform(0.8, 1.2)
-                sleep_time = delay * jitter
-                reason = "rate limit" if is_rate_limit else "timeout"
-                print(f"[*] {reason.capitalize()} hit ({err_str[:120]}). Retrying attempt {attempt+1}/{max_retries} in {sleep_time:.2f}s...")
-                time.sleep(sleep_time)
-                delay *= backoff_factor
+        for current_llm in models_to_try:
+            try:
+                config = {}
+                if agent_name:
+                    config["callbacks"] = [StreamingCallback(agent_name)]
+                
+                if not api_key:
+                    with _api_lock:
+                        time.sleep(1) # Prevent rapid-fire concurrent requests on free tier
+                        res = current_llm.invoke(messages, config=config)
+                else:
+                    res = current_llm.invoke(messages, config=config)
+                    
                 _last_request_time = time.time()
-            else:
-                raise e
-    raise last_exception
+                return res
+            except Exception as e:
+                last_exception = e
+                err_str = str(e)
+                is_rate_limit = (
+                    "too many requests" in err_str.lower() or
+                    "429" in err_str or
+                    "rate limit" in err_str.lower() or
+                    "provider returned error" in err_str.lower() or
+                    "limit exceeded" in err_str.lower()
+                )
+                is_timeout = (
+                    "timed out" in err_str.lower() or
+                    "timeout" in err_str.lower() or
+                    "read timeout" in err_str.lower() or
+                    isinstance(e, httpx.ReadTimeout) or
+                    isinstance(e, httpx.ConnectTimeout)
+                )
+                is_unavailable = (
+                    "404" in err_str or
+                    "unavailable" in err_str.lower()
+                )
+                is_forbidden = (
+                    "403" in err_str or
+                    "401" in err_str or
+                    "forbidden" in err_str.lower() or
+                    "unauthorized" in err_str.lower()
+                )
+                
+                if is_rate_limit or is_timeout or is_unavailable or is_forbidden:
+                    reason = "rate limit" if is_rate_limit else "timeout" if is_timeout else "forbidden" if is_forbidden else "unavailable"
+                    model_id = current_llm.model_name if hasattr(current_llm, 'model_name') else "Unknown Model"
+                    
+                    if current_llm != models_to_try[-1]:
+                        print(f"[*] {reason.capitalize()} hit on {model_id} ({err_str[:60]}). Moving to fallback model instantly...")
+                        continue
+                    else:
+                        break # All fallbacks exhausted, trigger sleep and retry loop
+                else:
+                    raise e
+                    
+        # If we reach here, ALL models in the fallback chain failed for this attempt
+        if attempt < max_retries - 1:
+            jitter = random.uniform(0.8, 1.2)
+            sleep_time = delay * jitter
+            print(f"[*] All fallback models exhausted on attempt {attempt+1}/{max_retries}. Sleeping {sleep_time:.2f}s before retrying...")
+            time.sleep(sleep_time)
+            delay *= backoff_factor
+            _last_request_time = time.time()
+        else:
+            raise last_exception
 
 
 
@@ -200,32 +247,10 @@ def run_tool_calling_loop(agent_name: str, messages: list) -> list:
     """Runs a loop allowing the LLM to call tools dynamically before finalizing the report.
     Returns the accumulated messages (both tool calls and tool responses).
     """
-    from tools.news_tools import web_search
-    
-    # Bind the search tool to the base LLM
-    llm_with_tools = llm.bind_tools([web_search])
-    
-    # We operate on a copy of messages to avoid polluting input
-    current_messages = []
-    for m in messages:
-        if isinstance(m, dict):
-            role = m.get("role")
-            content = m.get("content")
-            if role == "system":
-                current_messages.append(SystemMessage(content=content))
-            elif role == "user":
-                current_messages.append(HumanMessage(content=content))
-            elif role == "assistant":
-                current_messages.append(AIMessage(content=content))
-            else:
-                current_messages.append(HumanMessage(content=content))
-        else:
-            current_messages.append(m)
-            
     # Skip costly sequential search loops. The pre-fetched data is already comprehensive.
     return messages
 
-def _get_expert_report_raw(agent_name: str, system_prompt: str, messages: list) -> dict:
+def _get_expert_report_raw(agent_name: str, system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto") -> dict:
     """Invokes the LLM using direct text completion + regex parsing.
     Bypasses with_structured_output entirely — function-calling hangs on free-tier models.
     Supports financial, tech_product, macro, and sentiment expert personas.
@@ -307,7 +332,7 @@ def _get_expert_report_raw(agent_name: str, system_prompt: str, messages: list) 
         
     fallback_messages = messages + [{"role": "user", "content": fallback_prompt}]
     try:
-        response = invoke_with_retry(llm, fallback_messages, agent_name=agent_name)
+        response = invoke_with_retry(llm, fallback_messages, agent_name=agent_name, api_key=api_key, selected_model=selected_model)
         text = response.content.strip()
         
         def extract_section(section_name, content):
@@ -418,7 +443,7 @@ def _get_expert_report_raw(agent_name: str, system_prompt: str, messages: list) 
                 "price_target": "N/A"
             }
 
-def get_expert_report(agent_name: str, system_prompt: str, messages: list) -> tuple[dict, list]:
+def get_expert_report(agent_name: str, system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto") -> tuple[dict, list]:
     """Wrapper that runs tool loop, fetches structured report, and logs agent execution.
     Returns a tuple of (report_dict, new_messages_from_loop).
     """
@@ -429,7 +454,7 @@ def get_expert_report(agent_name: str, system_prompt: str, messages: list) -> tu
     new_messages = full_messages[len(messages):]
     
     # 2. Get the structured report using the full message transcript
-    report = _get_expert_report_raw(agent_name, system_prompt, full_messages)
+    report = _get_expert_report_raw(agent_name, system_prompt, full_messages, api_key=api_key, selected_model=selected_model)
     
     # Extract the user prompt from original messages
     user_prompt = ""
@@ -449,7 +474,7 @@ def get_expert_report(agent_name: str, system_prompt: str, messages: list) -> tu
     log_agent_execution(agent_name, system_prompt, user_prompt + tool_logs, report)
     return report, new_messages
 
-def _get_risk_audit_report_raw(system_prompt: str, messages: list) -> dict:
+def _get_risk_audit_report_raw(system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto") -> dict:
     """Invokes the LLM using direct text completion + regex parsing.
     Bypasses with_structured_output entirely — function-calling hangs on free-tier models.
     """
@@ -476,7 +501,7 @@ def _get_risk_audit_report_raw(system_prompt: str, messages: list) -> dict:
     
     fallback_messages = messages + [{"role": "user", "content": fallback_prompt}]
     try:
-        response = invoke_with_retry(llm, fallback_messages, agent_name="risk")
+        response = invoke_with_retry(llm, fallback_messages, agent_name="risk", api_key=api_key, selected_model=selected_model)
         text = response.content.strip()
         
         def extract_section(section_name, content):
@@ -547,9 +572,9 @@ def _get_risk_audit_report_raw(system_prompt: str, messages: list) -> dict:
             "cross_talk_log": []
         }
 
-def get_risk_audit_report(system_prompt: str, messages: list) -> dict:
+def get_risk_audit_report(system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto") -> dict:
     """Wrapper that intercepts get_risk_audit_report calls, logging full inputs and outputs to a shared file."""
-    report = _get_risk_audit_report_raw(system_prompt, messages)
+    report = _get_risk_audit_report_raw(system_prompt, messages, api_key=api_key, selected_model=selected_model)
     
     # Extract the user prompt from messages payload
     user_prompt = ""

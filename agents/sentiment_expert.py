@@ -11,6 +11,7 @@ def sentiment_node(state: AgentState):
     ticker = state["ticker"]
     raw_data = state.get("news_baseline", state.get("sentiment_data", "No news data available."))
     analyst_ratings = state.get("analyst_ratings", "No analyst ratings available.")
+    reddit_data = state.get("reddit_data", "No Reddit data available.")
     
     # Check for peer-review critiques & cross-talk instructions targeted at this specific expert
     risk_report = state.get("expert_reports", {}).get("risk", {})
@@ -34,6 +35,7 @@ def sentiment_node(state: AgentState):
     
     user_prompt = (
         f"Pre-fetched news narrative for {ticker.upper()}:\n{_cap(raw_data, 600)}\n\n"
+        f"Pre-fetched Reddit retail sentiment for {ticker.upper()}:\n{_cap(reddit_data, 400)}\n\n"
         f"Pre-fetched Wall Street consensus for {ticker.upper()}:\n{_cap(analyst_ratings, 300)}"
     )
     
@@ -56,7 +58,7 @@ def sentiment_node(state: AgentState):
         {"role": "user", "content": user_prompt}
     ]
     
-    report, loop_msgs = get_expert_report("sentiment", system_prompt, messages_payload)
+    report, loop_msgs = get_expert_report("sentiment", system_prompt, messages_payload, api_key=state.get("api_key"), selected_model=state.get("selected_model", "auto"))
     
     reports = dict(state.get("expert_reports", {}))
     reports["sentiment"] = report

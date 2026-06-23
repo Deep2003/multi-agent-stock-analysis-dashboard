@@ -10,6 +10,8 @@ def financial_node(state: AgentState):
     """
     ticker = state["ticker"]
     raw_data = state["financial_data"]
+    profile = state.get("company_profile", "")
+    insider_data = state.get("insider_data", "")
     
     # Check for peer-review critiques & cross-talk instructions targeted at this specific expert
     risk_report = state.get("expert_reports", {}).get("risk", {})
@@ -51,7 +53,7 @@ def financial_node(state: AgentState):
         {"role": "user", "content": user_prompt}
     ]
     
-    report, loop_msgs = get_expert_report("financial", system_prompt, messages_payload)
+    report, loop_msgs = get_expert_report("financial", system_prompt, messages_payload, api_key=state.get("api_key"), selected_model=state.get("selected_model", "auto"))
     
     reports = dict(state.get("expert_reports", {}))
     reports["financial"] = report

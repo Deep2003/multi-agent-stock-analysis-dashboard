@@ -11,61 +11,82 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
             theme: {
                 extend: {
                     colors: {
-                        bloomberg: {
-                            dark: '#0a0d14',
-                            card: '#121620',
-                            border: '#1e2433',
-                            cyan: '#00e1ff',
-                            green: '#00ff66',
-                            red: '#ff3366',
-                            amber: '#ffb300'
+                        surface: {
+                            base: '#09090b',
+                            card: '#111113',
+                            raised: '#18181b',
+                            border: '#27272a',
+                            muted: '#3f3f46',
+                        },
+                        accent: {
+                            cyan:  '#22d3ee',   // sky-400
+                            green: '#4ade80',   // green-400
+                            red:   '#f87171',   // red-400
+                            amber: '#fbbf24',   // amber-400
+                            blue:  '#60a5fa',   // blue-400
+                            purple:'#c084fc',   // purple-400
+                            pink:  '#f472b6',   // pink-400
                         }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
                     }
                 }
             }
         }
     </script>
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
+        *, *::before, *::after { box-sizing: border-box; }
         body {
-            font-family: 'Outfit', sans-serif;
-            background-color: #0a0d14;
+            font-family: 'Inter', sans-serif;
+            background-color: #09090b;
+            -webkit-font-smoothing: antialiased;
         }
-        .mono {
-            font-family: 'JetBrains Mono', monospace;
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Thin accent scrollbars */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+        .scrollbar-none::-webkit-scrollbar { display: none; }
+        .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Thinking pulse — subtle glow */
+        @keyframes thinking-pulse {
+            0%, 100% { box-shadow: 0 0 0px rgba(34,211,238,0); border-color: #3f3f46; }
+            50% { box-shadow: 0 0 14px rgba(34,211,238,0.12); border-color: rgba(34,211,238,0.35); }
         }
-        /* Custom scrollbars */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+        .thinking-card { animation: thinking-pulse 2.4s ease-in-out infinite; }
+
+        /* Nav tab active indicator */
+        .tab-active {
+            background: linear-gradient(135deg, rgba(34,211,238,0.12), rgba(34,211,238,0.04));
+            border-color: rgba(34,211,238,0.3);
+            color: #e4e4e7;
         }
-        ::-webkit-scrollbar-track {
-            background: #0a0d14;
+        .tab-inactive {
+            background: transparent;
+            border-color: transparent;
+            color: #71717a;
         }
-        ::-webkit-scrollbar-thumb {
-            background: #1e2433;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #00e1ff;
-        }
-        /* Pulsing animations */
-        @keyframes pulse-cyan {
-            0%, 100% { box-shadow: 0 0 5px rgba(0, 225, 255, 0.4); border-color: rgba(0, 225, 255, 0.4); }
-            50% { box-shadow: 0 0 20px rgba(0, 225, 255, 0.8); border-color: #00e1ff; }
-        }
-        .thinking-card {
-            animation: pulse-cyan 2s infinite;
-        }
-        /* Hide scrollbars for slick scrolling metrics */
-        .scrollbar-none::-webkit-scrollbar {
-            display: none;
-        }
-        .scrollbar-none {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+        .tab-inactive:hover { color: #a1a1aa; background: rgba(255,255,255,0.03); }
+
+        /* Prose overrides for markdown */
+        .prose h1, .prose h2, .prose h3 { color: #f4f4f5; font-weight: 700; }
+        .prose h1 { font-size: 1.15rem; border-bottom: 1px solid #27272a; padding-bottom: 0.5rem; margin-bottom: 1rem; }
+        .prose h2 { font-size: 1rem; margin-top: 1.4rem; color: #e4e4e7; }
+        .prose h3 { font-size: 0.875rem; color: #a1a1aa; }
+        .prose p { color: #d4d4d8; line-height: 1.7; font-size: 0.875rem; }
+        .prose ul { color: #d4d4d8; }
+        .prose li { margin-bottom: 0.25rem; font-size: 0.875rem; }
+        .prose strong { color: #f4f4f5; font-weight: 600; }
+        .prose code { color: #22d3ee; background: rgba(34,211,238,0.08); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.8em; }
+        .prose hr { border-color: #27272a; }
+        .prose blockquote { border-left-color: #22d3ee; color: #a1a1aa; font-style: italic; }
     </style>
     <!-- React & Babel CDNs -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
@@ -73,6 +94,8 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
     <script src="https://unpkg.com/@babel/standalone@7.15.0/babel.min.js"></script>
     <!-- Marked.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+    <!-- html2pdf.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body class="text-zinc-100">
     <div id="root"></div>
@@ -184,6 +207,17 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
             );
         }
 
+        // DownloadIcon
+        function DownloadIcon({ className = "w-5 h-5 text-bloomberg-cyan" }) {
+            return (
+                <svg xmlns="http://www.w3.org/2000/svg" class={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+            );
+        }
+
         // AgentIcon
         function AgentIcon({ type, className = "w-5 h-5" }) {
             if (type === 'supervisor') {
@@ -202,6 +236,11 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                     </svg>
                 );
             }
+
+            if (type === 'hash') {
+                return <HashIcon className={className} />;
+            }
+
             if (type === 'financial') {
                 return (
                     <svg xmlns="http://www.w3.org/2000/svg" class={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -255,6 +294,10 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
         }
 
         function App() {
+            const [activeTab, setActiveTab] = useState("setup"); // 'setup', 'logs', 'summary'
+            const [apiKey, setApiKey] = useState("");
+            const [selectedModel, setSelectedModel] = useState("auto");
+            const [averageRuntimes, setAverageRuntimes] = useState({});
             const [query, setQuery] = useState("");
             const [isAnalyzing, setIsAnalyzing] = useState(false);
             const [logs, setLogs] = useState([]);
@@ -301,9 +344,23 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                 tech_product: 'idle',
                 sentiment: 'idle',
                 macro: 'idle',
+                technical: 'idle',
                 risk: 'idle',
                 synthesis: 'idle'
             });
+
+            const exportToPDF = () => {
+                const element = document.getElementById('thesis-content');
+                if (!element) return;
+                const opt = {
+                    margin:       0.5,
+                    filename:     `${ticker || 'report'}_thesis.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2 },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+                };
+                window.html2pdf().set(opt).from(element).save();
+            };
 
             // Auto-scroll logs
             const logEndRef = useRef(null);
@@ -316,6 +373,7 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
 
                 // Reset state
                 setIsAnalyzing(true);
+                setActiveTab("logs");
                 setLogs([{ type: 'info', message: 'Connecting to state machine...' }]);
                 setTicker("");
                 setMetrics({ price: "—", pe: "—", sma50: "—", sma200: "—", market_cap: "—" });
@@ -343,7 +401,8 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                     setElapsedTime(elapsed);
                 }, 100);
 
-                const eventSource = new EventSource(`/api/stream?query=${encodeURIComponent(query)}`);
+                const url = `/api/stream?query=${encodeURIComponent(query)}&api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(selectedModel)}`;
+                const eventSource = new EventSource(url);
 
                 eventSource.onmessage = (event) => {
                     const data = JSON.parse(event.data);
@@ -391,6 +450,7 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                                 nextStates.tech_product = 'thinking';
                                 nextStates.sentiment = 'thinking';
                                 nextStates.macro = 'thinking';
+                                nextStates.technical = 'thinking';
                                 nextStates.risk = 'idle';
                             }
 
@@ -399,6 +459,7 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                             if (agent === 'tech_product' && revCount === 0) nextStates.tech_product = 'complete';
                             if (agent === 'sentiment' && revCount === 0) nextStates.sentiment = 'complete';
                             if (agent === 'macro' && revCount === 0) nextStates.macro = 'complete';
+                            if (agent === 'technical' && revCount === 0) nextStates.technical = 'complete';
 
                             // Phase 2: Once first 4 are complete, active_agent moves to risk
                             if (active_agent === 'risk') {
@@ -406,6 +467,7 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                                 nextStates.tech_product = 'complete';
                                 nextStates.sentiment = 'complete';
                                 nextStates.macro = 'complete';
+                                nextStates.technical = 'complete';
                                 nextStates.risk = 'thinking';
                             }
 
@@ -418,7 +480,7 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                             if (agent === 'risk' && revCount > 0 && active_agent) {
                                 const flaggedList = active_agent.split(',');
                                 flaggedList.forEach(tgt => {
-                                    if (['financial', 'tech_product', 'sentiment', 'macro'].includes(tgt)) {
+                                    if (['financial', 'tech_product', 'sentiment', 'macro', 'technical'].includes(tgt)) {
                                         nextStates[tgt] = 'thinking';
                                     }
                                 });
@@ -459,6 +521,7 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                         setTotalDuration(finalDuration);
                         setLogs(prev => [...prev, { type: 'success', message: data.message }]);
                         setIsAnalyzing(false);
+                        setActiveTab("summary");
                         fetchAgentLogs();
                         eventSource.close();
                     } else if (data.event === 'error') {
@@ -502,225 +565,298 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
             const activeExpertData = expertReports[activeExpertTab];
 
             return (
-                <div class="min-h-screen bg-bloomberg-dark flex flex-col">
+                <div class="min-h-screen bg-surface-base flex flex-col">
                     {/* Header */}
-                    <header class="border-b border-bloomberg-border bg-bloomberg-card/50 backdrop-blur px-6 py-4 flex items-center justify-between shadow-lg">
-                        <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 rounded bg-gradient-to-tr from-bloomberg-cyan to-indigo-600 flex items-center justify-center shadow-[0_0_15px_rgba(0,225,255,0.4)]">
-                                <CpuIcon />
+                    <header class="shrink-0 border-b border-surface-border bg-surface-card/80 backdrop-blur-md px-5 h-14 flex items-center justify-between gap-4 shadow-xl">
+                        {/* Brand */}
+                        <div class="flex items-center gap-3 shrink-0">
+                            <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-accent-cyan/20 to-accent-blue/20 border border-accent-cyan/25 flex items-center justify-center">
+                                <CpuIcon className="w-3.5 h-3.5 text-accent-cyan" />
                             </div>
                             <div>
-                                <h1 class="text-lg font-extrabold tracking-tight text-white flex items-center gap-2">
-                                    Agentic Stock Analyst
-                                    <span class="text-xs bg-bloomberg-cyan/10 border border-bloomberg-cyan/30 text-bloomberg-cyan px-2 py-0.5 rounded font-mono font-normal">v3.0 COMMITTEE</span>
-                                </h1>
-                                <p class="text-xs text-zinc-400">Bloomberg-grade institutional investment committee</p>
+                                <span class="text-sm font-bold text-zinc-100 tracking-tight">Agentic Stock Analyst</span>
+                                <span class="hidden sm:inline text-xs text-zinc-600 ml-2 font-normal">/ Institutional AI Committee</span>
                             </div>
                         </div>
-                        <div class="flex items-center gap-4 text-xs font-mono text-zinc-400">
-                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-bloomberg-green animate-ping"></span> API CONNECTED</span>
-                            <span class="border-l border-bloomberg-border pl-4">MODEL: {model_name}</span>
+
+                        {/* Pill Tab Navigation */}
+                        <nav class="flex items-center gap-1 bg-surface-raised border border-surface-border rounded-xl p-1">
+                            {[['setup','Setup'], ['logs','Agent Logs'], ['summary','Summary']].map(([id, label]) => (
+                                <button
+                                    key={id}
+                                    onClick={() => setActiveTab(id)}
+                                    class={`px-3.5 py-1.5 text-xs font-semibold rounded-lg border transition-all duration-200 ${activeTab === id ? 'tab-active' : 'tab-inactive'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </nav>
+
+                        {/* Status row */}
+                        <div class="hidden sm:flex items-center gap-3 text-[11px] font-mono text-zinc-500 shrink-0">
+                            {isAnalyzing ? (
+                                <span class="flex items-center gap-1.5 text-accent-cyan">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-ping"></span>
+                                    {elapsedTime.toFixed(1)}s
+                                </span>
+                            ) : totalDuration ? (
+                                <span class="flex items-center gap-1.5 text-accent-green">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-accent-green"></span>
+                                    Done in {totalDuration}s
+                                </span>
+                            ) : (
+                                <span class="flex items-center gap-1.5">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>
+                                    READY
+                                </span>
+                            )}
+                            <span class="text-zinc-700">|</span>
+                            <span class="text-zinc-600">{getModelDisplayName(selectedModel)}</span>
                         </div>
                     </header>
 
                     {/* Main Area */}
-                    <main class="flex-1 p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden">
-                        {/* Left Column: Command Center */}
-                        <section class="lg:col-span-5 flex flex-col gap-6 h-full max-h-[calc(100vh-140px)]">
-                            {/* Input Form */}
-                            <div class="bg-bloomberg-card border border-bloomberg-border rounded-xl p-5 shadow-2xl flex flex-col gap-4">
-                                <h2 class="text-sm font-bold tracking-wider text-zinc-300 uppercase flex items-center gap-2">
-                                    <TerminalIcon />
-                                    Command Center
-                                </h2>
-                                <div class="flex gap-2">
-                                    <input 
+                    <main class="flex-1 p-5 overflow-hidden flex flex-col items-center gap-5">
+                        {/* TAB 1: SETUP */}
+                        <div class={activeTab === 'setup' ? "w-full max-w-xl flex flex-col gap-5 pt-12" : "hidden"}>
+                            {/* Input Card */}
+                            <div class="bg-surface-card border border-surface-border rounded-2xl p-7 shadow-2xl flex flex-col gap-5">
+                                <div class="flex items-center gap-3 border-b border-surface-border pb-5">
+                                    <div class="w-9 h-9 rounded-xl bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center">
+                                        <TerminalIcon className="w-4 h-4 text-accent-cyan" />
+                                    </div>
+                                    <div>
+                                        <h2 class="text-sm font-bold text-zinc-100">Analysis Configuration</h2>
+                                        <p class="text-xs text-zinc-500 mt-0.5">Configure your ticker and start the AI committee</p>
+                                    </div>
+                                </div>
+
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">Stock Ticker / Query</label>
+                                    <input
                                         type="text"
                                         value={query}
                                         onChange={(e) => setQuery(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && runAnalysis()}
                                         disabled={isAnalyzing}
-                                        placeholder="e.g., Analyze Apple (AAPL) and recent headlines."
-                                        class="flex-1 bg-bloomberg-dark/80 border border-bloomberg-border rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-bloomberg-cyan text-white placeholder-zinc-500 disabled:opacity-50"
+                                        placeholder="e.g., AAPL, NVDA, TSLA"
+                                        class="w-full bg-surface-base border border-surface-border hover:border-surface-muted focus:border-accent-cyan/50 focus:ring-2 focus:ring-accent-cyan/10 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 disabled:opacity-40 transition-all outline-none"
                                     />
-                                    <button 
-                                        onClick={runAnalysis}
+                                </div>
+
+                                <div class="flex flex-col gap-1.5">
+                                    <div class="flex items-center justify-between">
+                                        <label class="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">OpenRouter API Key</label>
+                                        <span class="text-[10px] text-zinc-600">Optional — falls back to ENV</span>
+                                    </div>
+                                    <input
+                                        type="password"
+                                        value={apiKey}
+                                        onChange={(e) => setApiKey(e.target.value)}
                                         disabled={isAnalyzing}
-                                        class="bg-gradient-to-tr from-bloomberg-cyan to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-bloomberg-dark font-extrabold text-sm px-6 py-3 rounded-lg flex items-center gap-2 shadow-[0_0_15px_rgba(0,225,255,0.2)] disabled:opacity-50 transition-all duration-300"
+                                        placeholder="sk-or-v1-..."
+                                        class="w-full bg-surface-base border border-surface-border hover:border-surface-muted focus:border-accent-cyan/50 focus:ring-2 focus:ring-accent-cyan/10 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 disabled:opacity-40 transition-all outline-none mono"
+                                    />
+                                </div>
+
+                                <div class="flex flex-col gap-1.5">
+                                    <div class="flex items-center justify-between">
+                                        <label class="text-[11px] font-semibold text-zinc-400 uppercase tracking-widest">Model Selection</label>
+                                        <span class="text-[10px] text-zinc-600">Free OpenRouter Models</span>
+                                    </div>
+                                    <select
+                                        value={selectedModel}
+                                        onChange={(e) => setSelectedModel(e.target.value)}
+                                        disabled={isAnalyzing}
+                                        class="w-full bg-surface-base border border-surface-border hover:border-surface-muted focus:border-accent-cyan/50 focus:ring-2 focus:ring-accent-cyan/10 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 disabled:opacity-40 transition-all outline-none cursor-pointer appearance-none"
+                                        style={{ backgroundImage: "url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23a1a1aa%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')", backgroundRepeat: "no-repeat", backgroundPosition: "right 1rem top 50%", backgroundSize: "0.65rem auto" }}
                                     >
-                                        {isAnalyzing ? (
-                                            <>
-                                                <div class="w-4 h-4 border-2 border-bloomberg-dark border-t-transparent rounded-full animate-spin"></div>
-                                                Analyzing
-                                            </>
-                                        ) : (
-                                            <>
-                                                <PlayIcon className="w-4 h-4 fill-bloomberg-dark text-bloomberg-dark" />
-                                                Analyze
-                                            </>
-                                        )}
-                                    </button>
+                                        <option value="auto">Auto-Fallback (All Free Models) {averageRuntimes["auto"] ? `(Avg. ${averageRuntimes["auto"]}s)` : ""}</option>
+                                        <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B {averageRuntimes["meta-llama/llama-3.3-70b-instruct:free"] ? `(Avg. ${averageRuntimes["meta-llama/llama-3.3-70b-instruct:free"]}s)` : ""}</option>
+                                        <option value="google/gemma-3-27b-it:free">Gemma 3 27B {averageRuntimes["google/gemma-3-27b-it:free"] ? `(Avg. ${averageRuntimes["google/gemma-3-27b-it:free"]}s)` : ""}</option>
+                                        <option value="mistralai/mistral-7b-instruct:free">Mistral 7B {averageRuntimes["mistralai/mistral-7b-instruct:free"] ? `(Avg. ${averageRuntimes["mistralai/mistral-7b-instruct:free"]}s)` : ""}</option>
+                                        <option value="microsoft/phi-3-medium-128k-instruct:free">Phi-3 Medium {averageRuntimes["microsoft/phi-3-medium-128k-instruct:free"] ? `(Avg. ${averageRuntimes["microsoft/phi-3-medium-128k-instruct:free"]}s)` : ""}</option>
+                                        <option value="google/gemma-4-31b-it:free">Gemma 4 31B {averageRuntimes["google/gemma-4-31b-it:free"] ? `(Avg. ${averageRuntimes["google/gemma-4-31b-it:free"]}s)` : ""}</option>
+                                    </select>
                                 </div>
-                                <div class="flex items-center justify-between border-t border-bloomberg-border/50 pt-3 text-xs font-mono">
-                                    <span class="text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                            <circle cx="12" cy="12" r="10"/>
-                                            <polyline points="12 6 12 12 16 14"/>
-                                        </svg>
-                                        EXECUTION TIME
-                                    </span>
+
+                                <button
+                                    onClick={runAnalysis}
+                                    disabled={isAnalyzing || !query.trim()}
+                                    class="w-full mt-1 py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed bg-accent-cyan text-zinc-900 hover:brightness-110 shadow-lg shadow-accent-cyan/10"
+                                >
                                     {isAnalyzing ? (
-                                        <span class="text-bloomberg-cyan font-bold animate-pulse flex items-center gap-1.5">
-                                            <span class="w-1.5 h-1.5 rounded-full bg-bloomberg-cyan animate-ping"></span>
-                                            RUNNING: {elapsedTime.toFixed(1)}s
-                                        </span>
-                                    ) : totalDuration ? (
-                                        <span class="text-bloomberg-green font-bold flex items-center gap-1">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-bloomberg-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                                <polyline points="20 6 9 17 4 12"/>
-                                            </svg>
-                                            COMPLETED IN: {totalDuration}s
-                                        </span>
+                                        <>
+                                            <div class="w-4 h-4 border-2 border-zinc-900/60 border-t-zinc-900 rounded-full animate-spin"></div>
+                                            <span>Running Analysis...</span>
+                                        </>
                                     ) : (
-                                        <span class="text-zinc-500">⏱️ READY</span>
+                                        <>
+                                            <PlayIcon className="w-4 h-4" />
+                                            <span>Run Analysis</span>
+                                        </>
                                     )}
-                                </div>
+                                </button>
                             </div>
 
+                            {/* Feature chips */}
+                            <div class="grid grid-cols-3 gap-3">
+                                {[['📊', 'Financial Analysis', '5 domain experts'],
+                                  ['🔍', 'Real-Time Data', 'yfinance + DDG'],
+                                  ['🛡️', 'Risk Auditor', 'Peer review loop']
+                                ].map(([icon, title, sub]) => (
+                                    <div key={title} class="bg-surface-card border border-surface-border rounded-xl p-3.5 text-center">
+                                        <div class="text-lg mb-1.5">{icon}</div>
+                                        <p class="text-xs font-semibold text-zinc-300">{title}</p>
+                                        <p class="text-[10px] text-zinc-600 mt-0.5">{sub}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* TAB 2: EXECUTION LOGS */}
+                        <div class={activeTab === 'logs' ? "w-full flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-4" : "hidden"}>
                             {/* Agent Handoff Timeline */}
-                            <div class="bg-bloomberg-card border border-bloomberg-border rounded-xl p-5 shadow-2xl flex flex-col gap-4 flex-1 overflow-y-auto font-mono">
-                                <h2 class="text-sm font-bold tracking-wider text-zinc-300 uppercase flex items-center gap-2">
-                                    <GitBranchIcon />
-                                    Investment Committee Handoff
-                                </h2>
-                                
-                                <div class="flex flex-col gap-3 relative before:absolute before:left-6 before:top-2 before:bottom-2 before:w-[1px] before:bg-bloomberg-border">
+                            <div class="bg-surface-card border border-surface-border rounded-2xl p-4 flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
+                                <div class="flex items-center gap-2 border-b border-surface-border pb-3 shrink-0">
+                                    <GitBranchIcon className="w-3.5 h-3.5 text-accent-cyan" />
+                                    <h2 class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Committee Handoff Pipeline</h2>
+                                </div>
+
+                                <div class="flex flex-col gap-2">
                                     {/* Supervisor */}
-                                    <AgentCard 
-                                        title="Supervisor Agent" 
-                                        desc="Orchestrates committee, parses prompt and extracts ticker symbol"
+                                    <AgentCard
+                                        title="Supervisor"
+                                        desc="Orchestrates committee, extracts ticker"
                                         status={agentStates.supervisor}
                                         icon="supervisor"
+                                        color="cyan"
                                     />
                                     {/* Data Gatherer */}
-                                    <AgentCard 
-                                        title="Parallel Data Fetcher" 
-                                        desc="Fires parallel threads on backend to pre-fetch 5 rich metric blocks"
+                                    <AgentCard
+                                        title="Data Fetcher"
+                                        desc="Parallel pre-fetch: financials, news, macro"
                                         status={agentStates.prefetch}
                                         icon="download-cloud"
+                                        color="blue"
                                     />
-                                    {/* Financial Expert */}
-                                    <AgentCard 
-                                        title="Financial Expert (Phase 1/3)" 
-                                        desc="Analyzes fundamentals, valuation, and balance sheet metrics. Responds to Risk critiques."
-                                        status={agentStates.financial}
-                                        icon="financial"
-                                    />
-                                    {/* Tech Moat Expert */}
-                                    <AgentCard 
-                                        title="Tech & Product Expert (Phase 1/3)" 
-                                        desc="Assesses company competitive moat, business scale, and product pipelines. Responds to Risk critiques."
-                                        status={agentStates.tech_product}
-                                        icon="tech_product"
-                                    />
-                                    {/* Sentiment Expert */}
-                                    <AgentCard 
-                                        title="Media & Sentiment Expert (Phase 1/3)" 
-                                        desc="Gauges media coverage and narrative sentiment. Responds to Risk critiques."
-                                        status={agentStates.sentiment}
-                                        icon="sentiment"
-                                    />
-                                    {/* Macro Expert */}
-                                    <AgentCard 
-                                        title="Macro & Industry Expert (Phase 1/3)" 
-                                        desc="Contextualizes market tailwinds and broader sector indices. Responds to Risk critiques."
-                                        status={agentStates.macro}
-                                        icon="macro"
-                                    />
-                                    {/* Risk Expert */}
-                                    <AgentCard 
-                                        title="Risk Expert & Internal Auditor (Phase 2)" 
-                                        desc="Performs independent risk checks and cross-examines peer reports."
+                                    <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                        <AgentCard title="Financial" desc="Fundamentals & valuation" status={agentStates.financial} icon="financial" color="green" compact />
+                                        <AgentCard title="Tech Moat" desc="Competitive moat & pipeline" status={agentStates.tech_product} icon="tech_product" color="blue" compact />
+                                        <AgentCard title="Sentiment" desc="Media & narrative analysis" status={agentStates.sentiment} icon="sentiment" color="pink" compact />
+                                        <AgentCard title="Macro" desc="Sector & macro indices" status={agentStates.macro} icon="macro" color="amber" compact />
+                                        <AgentCard title="Technical" desc="Charts & indicators" status={agentStates.technical} icon="hash" color="purple" compact />
+                                    </div>
+                                    <AgentCard
+                                        title="Risk Auditor"
+                                        desc="Cross-examines all expert reports"
                                         status={agentStates.risk}
                                         icon="risk"
+                                        color="red"
                                     />
-                                    {/* Committee Compiler */}
-                                    <AgentCard 
-                                        title="Supervisor Compiler (Phase 4)" 
-                                        desc="Synthesizes all expert reports and critiques into the final thesis"
+                                    <AgentCard
+                                        title="Synthesis Compiler"
+                                        desc="Generates final investment thesis"
                                         status={agentStates.synthesis}
                                         icon="supervisor"
+                                        color="purple"
                                     />
                                 </div>
                             </div>
 
                             {/* Live Console Output */}
-                            <div class="bg-bloomberg-card border border-bloomberg-border rounded-xl p-5 shadow-2xl flex flex-col gap-3 h-48">
-                                <h2 class="text-xs font-bold tracking-wider text-zinc-400 uppercase flex items-center gap-2">
-                                    <TerminalIcon className="w-3.5 h-3.5 text-bloomberg-cyan" />
-                                    Graph Console Output
-                                </h2>
-                                <div class="flex-1 bg-bloomberg-dark/60 rounded-lg p-3 overflow-y-auto mono text-xs text-zinc-300 flex flex-col gap-1.5 border border-bloomberg-border/50">
+                            <div class="bg-surface-card border border-surface-border rounded-2xl p-4 flex flex-col gap-3 h-full min-h-0 overflow-hidden">
+                                <div class="flex items-center justify-between border-b border-surface-border pb-3 shrink-0">
+                                    <div class="flex items-center gap-2">
+                                        <TerminalIcon className="w-3.5 h-3.5 text-accent-cyan" />
+                                        <h2 class="text-xs font-bold text-zinc-400 uppercase tracking-wider">Graph Console</h2>
+                                    </div>
+                                    <span class="text-[10px] mono text-zinc-600">{logs.length} events</span>
+                                </div>
+                                <div class="flex-1 bg-surface-base/80 rounded-xl p-3 overflow-y-auto mono text-[11px] flex flex-col gap-1 border border-surface-border/60">
                                     {logs.length === 0 ? (
-                                        <span class="text-zinc-500 italic">Waiting for analysis trigger...</span>
+                                        <span class="text-zinc-600 italic">Waiting for analysis trigger...</span>
                                     ) : (
-                                        logs.map((log, idx) => (
-                                            <div key={idx} class="flex gap-2">
-                                                <span class={`font-bold select-none ${
-                                                    log.type === 'system' ? 'text-zinc-500' :
-                                                    log.type === 'supervisor' ? 'text-bloomberg-cyan' :
-                                                    log.type === 'backend' ? 'text-purple-400' :
-                                                    log.type === 'financial' ? 'text-bloomberg-green' :
-                                                    log.type === 'tech_product' ? 'text-blue-400' :
-                                                    log.type === 'sentiment' ? 'text-pink-400' :
-                                                    log.type === 'macro' ? 'text-yellow-300' :
-                                                    log.type === 'risk' ? 'text-bloomberg-red' :
-                                                    log.type === 'success' ? 'text-bloomberg-green' :
-                                                    log.type === 'error' ? 'text-bloomberg-red' :
-                                                    'text-zinc-400'
-                                                }`}>
-                                                    [{(log.type || 'system').toUpperCase()}]
-                                                </span>
-                                                <span class="break-all whitespace-pre-wrap">{log.message}</span>
-                                            </div>
-                                        ))
+                                        logs.map((log, idx) => {
+                                            const typeStyles = {
+                                                system:     'text-zinc-600',
+                                                supervisor: 'text-accent-cyan',
+                                                backend:    'text-accent-purple',
+                                                financial:  'text-accent-green',
+                                                tech_product:'text-accent-blue',
+                                                sentiment:  'text-accent-pink',
+                                                macro:      'text-accent-amber',
+                                                risk:       'text-accent-red',
+                                                success:    'text-accent-green',
+                                                error:      'text-accent-red',
+                                                info:       'text-zinc-400',
+                                            };
+                                            const style = typeStyles[log.type] || 'text-zinc-500';
+                                            return (
+                                                <div key={idx} class="flex gap-2 items-start leading-relaxed">
+                                                    <span class={`${style} font-bold shrink-0 select-none`}>[{(log.type||'sys').toUpperCase()}]</span>
+                                                    <span class="text-zinc-300 break-all">{log.message}</span>
+                                                </div>
+                                            );
+                                        })
                                     )}
                                     <div ref={logEndRef}></div>
                                 </div>
                             </div>
-                        </section>
+                        </div>
 
-                        {/* Right Column: Analysis Dashboard */}
-                        <section class="lg:col-span-7 flex flex-col gap-6 h-full max-h-[calc(100vh-140px)] overflow-y-auto pr-1">
-                            {/* Metrics Cards */}
-                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 sm:gap-4 shrink-0">
-                                <MetricCard title="Ticker" value={ticker || "—"} IconComponent={HashIcon} color="text-bloomberg-cyan bg-bloomberg-cyan/5" />
-                                <MetricCard title="Current Price" value={metrics.price !== "—" ? `$${metrics.price}` : "—"} IconComponent={DollarIcon} color="text-bloomberg-green bg-bloomberg-green/5" />
-                                <MetricCard title="P/E Ratio" value={metrics.pe || "—"} IconComponent={PieChartIcon} color="text-bloomberg-amber bg-bloomberg-amber/5" />
-                                <MetricCard title="50 SMA" value={metrics.sma50 !== "—" ? `$${metrics.sma50}` : "—"} IconComponent={TrendingUpIcon} color="text-bloomberg-cyan bg-bloomberg-cyan/5" />
-                                <MetricCard title="200 SMA" value={metrics.sma200 !== "—" ? `$${metrics.sma200}` : "—"} IconComponent={ActivityIcon} color="text-purple-400 bg-purple-500/5" />
+                        {/* TAB 3: EXECUTIVE SUMMARY */}
+                        <div class={activeTab === 'summary' ? "w-full max-w-5xl flex-1 min-h-0 flex flex-col gap-4 overflow-y-auto pr-0.5 pb-10" : "hidden"}>
+                            {/* Metric chips */}
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 shrink-0">
+                                <MetricCard title="Ticker" value={ticker || "—"} IconComponent={HashIcon} color="text-accent-cyan bg-accent-cyan/10" />
+                                <MetricCard title="Price" value={metrics.price !== "—" ? `$${metrics.price}` : "—"} IconComponent={DollarIcon} color="text-accent-green bg-accent-green/10" />
+                                <MetricCard title="P/E Ratio" value={metrics.pe || "—"} IconComponent={PieChartIcon} color="text-accent-amber bg-accent-amber/10" />
+                                <MetricCard title="50-Day SMA" value={metrics.sma50 !== "—" ? `$${metrics.sma50}` : "—"} IconComponent={TrendingUpIcon} color="text-accent-blue bg-accent-blue/10" />
+                                <MetricCard title="200-Day SMA" value={metrics.sma200 !== "—" ? `$${metrics.sma200}` : "—"} IconComponent={ActivityIcon} color="text-accent-purple bg-accent-purple/10" />
                             </div>
 
                             {/* Markdown Report Container */}
-                            <div class="bg-bloomberg-card border border-bloomberg-border rounded-xl p-6 shadow-2xl flex flex-col shrink-0 min-h-[350px]">
+                            <div class="bg-surface-card border border-surface-border rounded-2xl p-6 shadow-xl flex flex-col shrink-0 min-h-[300px]">
                                 <div class="flex justify-between items-center border-b border-bloomberg-border/50 pb-4 mb-4">
-                                    <h2 class="font-extrabold text-white text-base flex items-center gap-2">
-                                        <FileTextIcon />
-                                        Synthesized Executive Committee Thesis
+                                    <h2 class="font-bold text-zinc-100 text-sm flex items-center gap-2">
+                                        <FileTextIcon className="w-4 h-4 text-accent-cyan" />
+                                        Investment Committee Thesis
                                     </h2>
-                                    <span class="mono text-xs text-zinc-500 bg-bloomberg-dark/60 border border-bloomberg-border px-2.5 py-1 rounded">
-                                        Ticker: {ticker || "None"}
-                                    </span>
+                                    <div class="flex items-center gap-2">
+                                        <button onClick={exportToPDF} class="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-accent-cyan bg-accent-cyan/10 hover:bg-accent-cyan/20 border border-accent-cyan/20 rounded-lg transition-colors" title="Download Report">
+                                            <DownloadIcon className="w-3.5 h-3.5" />
+                                            Export PDF
+                                        </button>
+                                        <span class="mono text-[10px] text-zinc-600 bg-surface-base border border-surface-border px-2.5 py-1 rounded-lg">
+                                            {ticker || "Pending"}
+                                        </span>
+                                    </div>
                                 </div>
                                 
-                                <div 
-                                    class="flex-1 prose prose-invert prose-cyan max-w-none text-zinc-300 text-sm leading-relaxed"
+                                <div id="thesis-content"
+                                    class="flex-1 prose prose-invert max-w-none text-zinc-300 text-sm leading-relaxed"
                                     dangerouslySetInnerHTML={{ __html: renderMarkdown(report || streamingText.supervisor) }}
                                 ></div>
                             </div>
 
-                            {/* New Section: Committee Drill-Down */}
-                            <div class="bg-bloomberg-card border border-bloomberg-border rounded-xl p-6 shadow-2xl flex flex-col shrink-0">
+                            {/* TradingView Advanced Chart */}
+                            {ticker && (
+                                <div class="bg-surface-card border border-surface-border rounded-2xl p-6 shadow-xl flex flex-col shrink-0 h-[500px]">
+                                    <div class="border-b border-bloomberg-border/50 pb-4 mb-4">
+                                        <h2 class="font-bold text-zinc-100 text-sm flex items-center gap-2">
+                                            <ActivityIcon className="w-4 h-4 text-accent-green" />
+                                            Technical Price Action
+                                        </h2>
+                                    </div>
+                                    <div class="flex-1 rounded-xl overflow-hidden bg-surface-base">
+                                        <TradingViewChart ticker={ticker} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Committee Drill-Down */}
+                            <div class="bg-surface-card border border-surface-border rounded-2xl p-5 shadow-xl flex flex-col shrink-0">
                                 <div class="border-b border-bloomberg-border/50 pb-4 mb-4">
                                     <h2 class="font-extrabold text-white text-base flex items-center gap-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-bloomberg-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -744,7 +880,14 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                                 </div>
 
                                 {/* Tab Contents */}
-                                <div class="bg-bloomberg-dark/40 rounded-xl p-5 border border-bloomberg-border/60">
+                                <div class={`rounded-xl p-5 border transition-colors duration-500 ${
+                                    activeExpertTab === 'financial' ? 'bg-bloomberg-green/5 border-bloomberg-green/30' :
+                                    activeExpertTab === 'tech_product' ? 'bg-blue-500/5 border-blue-500/30' :
+                                    activeExpertTab === 'sentiment' ? 'bg-pink-500/5 border-pink-500/30' :
+                                    activeExpertTab === 'macro' ? 'bg-yellow-500/5 border-yellow-500/30' :
+                                    activeExpertTab === 'risk' ? 'bg-bloomberg-amber/5 border-bloomberg-amber/30' :
+                                    'bg-bloomberg-dark/40 border-bloomberg-border/60'
+                                }`}>
                                      {activeExpertTab === 'logs' ? (
                                          <div class="flex flex-col gap-4">
                                              <div class="flex justify-between items-center border-b border-bloomberg-border/30 pb-2.5">
@@ -1028,7 +1171,7 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                                                     {activeExpertData.audit_log && activeExpertData.audit_log.length > 0 && (
                                                         <div class="bg-bloomberg-dark/60 border border-bloomberg-border rounded-xl p-4 flex flex-col gap-3">
                                                             <h4 class="text-xs uppercase font-extrabold tracking-wider text-bloomberg-amber flex items-center gap-1.5">
-                                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4.5 h-4.5 text-bloomberg-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-bloomberg-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                                                                     <line x1="12" y1="9" x2="12" y2="13"/>
                                                                     <line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -1062,7 +1205,7 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                                                     {activeExpertData.cross_talk_log && activeExpertData.cross_talk_log.length > 0 && (
                                                         <div class="bg-bloomberg-dark/60 border border-bloomberg-border rounded-xl p-4 flex flex-col gap-3">
                                                             <h4 class="text-xs uppercase font-extrabold tracking-wider text-bloomberg-cyan flex items-center gap-1.5">
-                                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4.5 h-4.5 text-bloomberg-cyan animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-bloomberg-cyan animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                                     <path d="m22 2-7 20-4-9-9-4Z"/>
                                                                     <path d="M22 2 11 13"/>
                                                                 </svg>
@@ -1117,25 +1260,25 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
                                                 </div>
                                             )}
                                         </div>
-                                    )}
+                                     )}
                                 </div>
                             </div>
-                        </section>
+                        </div>
                     </main>
                 </div>
             );
         }
 
-        // Subcomponent: Tab Button
+        // Subcomponent: Tab Button (Expert Drill-Down)
         function TabButton({ id, label, active, onClick }) {
             const isActive = active === id;
             return (
                 <button
                     onClick={() => onClick(id)}
-                    class={`px-4 py-2 font-bold text-xs rounded-lg transition-all duration-300 ${
-                        isActive 
-                            ? 'bg-bloomberg-cyan text-bloomberg-dark shadow-[0_0_12px_rgba(0,225,255,0.3)]' 
-                            : 'bg-zinc-900/60 border border-bloomberg-border/50 text-zinc-400 hover:text-zinc-200'
+                    class={`px-3.5 py-1.5 font-semibold text-[11px] rounded-lg border transition-all duration-200 ${
+                        isActive
+                            ? 'bg-surface-raised border-surface-muted text-zinc-200 shadow-sm'
+                            : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-surface-raised/60'
                     }`}
                 >
                     {label}
@@ -1144,50 +1287,54 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
         }
 
         // Subcomponent: Agent Card in Handoff Timeline
-        function AgentCard({ title, desc, status, icon }) {
-            const getStatusStyle = () => {
-                if (status === 'complete') return 'border-bloomberg-green/40 bg-bloomberg-green/5 text-bloomberg-green shadow-[0_0_10px_rgba(0,255,102,0.05)]';
-                if (status === 'thinking') return 'thinking-card bg-bloomberg-cyan/5 text-bloomberg-cyan';
-                return 'border-bloomberg-border bg-bloomberg-card text-zinc-400 opacity-60';
+        function AgentCard({ title, desc, status, icon, color = 'cyan', compact = false }) {
+            const colorMap = {
+                cyan:   { ring: 'border-accent-cyan/30 bg-accent-cyan/5',   icon: 'border-accent-cyan/25 bg-accent-cyan/10',   text: 'text-accent-cyan',   badge: 'text-accent-cyan bg-accent-cyan/10 border-accent-cyan/25' },
+                green:  { ring: 'border-accent-green/30 bg-accent-green/5',  icon: 'border-accent-green/25 bg-accent-green/10',  text: 'text-accent-green',  badge: 'text-accent-green bg-accent-green/10 border-accent-green/25' },
+                blue:   { ring: 'border-accent-blue/30 bg-accent-blue/5',    icon: 'border-accent-blue/25 bg-accent-blue/10',    text: 'text-accent-blue',   badge: 'text-accent-blue bg-accent-blue/10 border-accent-blue/25' },
+                amber:  { ring: 'border-accent-amber/30 bg-accent-amber/5',  icon: 'border-accent-amber/25 bg-accent-amber/10',  text: 'text-accent-amber',  badge: 'text-accent-amber bg-accent-amber/10 border-accent-amber/25' },
+                pink:   { ring: 'border-accent-pink/30 bg-accent-pink/5',    icon: 'border-accent-pink/25 bg-accent-pink/10',    text: 'text-accent-pink',   badge: 'text-accent-pink bg-accent-pink/10 border-accent-pink/25' },
+                red:    { ring: 'border-accent-red/30 bg-accent-red/5',      icon: 'border-accent-red/25 bg-accent-red/10',      text: 'text-accent-red',    badge: 'text-accent-red bg-accent-red/10 border-accent-red/25' },
+                purple: { ring: 'border-accent-purple/30 bg-accent-purple/5',icon: 'border-accent-purple/25 bg-accent-purple/10',text: 'text-accent-purple', badge: 'text-accent-purple bg-accent-purple/10 border-accent-purple/25' },
             };
+            const c = colorMap[color] || colorMap.cyan;
+
+            const borderStyle =
+                status === 'complete' ? `border ${c.ring}`
+                : status === 'thinking' ? `thinking-card border`
+                : 'border border-surface-border bg-surface-raised/30 opacity-50';
 
             const getBadge = () => {
-                if (status === 'complete') {
-                    return (
-                        <span class="text-xs font-bold text-bloomberg-green bg-bloomberg-green/10 border border-bloomberg-green/30 px-2 py-0.5 rounded flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                            COMPLETED
-                        </span>
-                    );
-                }
-                if (status === 'thinking') {
-                    return (
-                        <span class="text-xs font-bold text-bloomberg-cyan bg-bloomberg-cyan/10 border border-bloomberg-cyan/30 px-2 py-0.5 rounded flex items-center gap-1">
-                            <div class="w-2.5 h-2.5 border-2 border-bloomberg-cyan border-t-transparent rounded-full animate-spin"></div>
-                            THINKING
-                        </span>
-                    );
-                }
-                return <span class="text-xs text-zinc-600 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded">IDLE</span>;
+                if (status === 'complete') return (
+                    <span class={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${c.badge} shrink-0`}>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        DONE
+                    </span>
+                );
+                if (status === 'thinking') return (
+                    <span class={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1.5 ${c.badge} shrink-0`}>
+                        <div class={`w-2 h-2 border border-t-transparent rounded-full animate-spin ${c.text.replace('text','border')}`}></div>
+                        WORKING
+                    </span>
+                );
+                return <span class="text-[10px] text-zinc-700 bg-surface-base border border-surface-border px-2 py-0.5 rounded-md shrink-0">IDLE</span>;
             };
 
             return (
-                <div class={`flex items-start gap-4 border rounded-xl p-4 transition-all duration-300 ${getStatusStyle()}`}>
-                    <div class={`w-10 h-10 rounded-lg flex items-center justify-center border ${
-                        status === 'complete' ? 'border-bloomberg-green/30 bg-bloomberg-green/10' :
-                        status === 'thinking' ? 'border-bloomberg-cyan/30 bg-bloomberg-cyan/10' :
-                        'border-zinc-800 bg-zinc-900'
+                <div class={`flex items-center gap-3 rounded-xl p-3 transition-all duration-300 ${borderStyle}`}>
+                    <div class={`${compact ? 'w-7 h-7' : 'w-8 h-8'} rounded-lg flex items-center justify-center border shrink-0 ${
+                        status === 'complete' ? c.icon
+                        : status === 'thinking' ? c.icon
+                        : 'border-surface-border bg-surface-base'
                     }`}>
-                        <AgentIcon type={icon} />
+                        <AgentIcon type={icon} className={`${compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} ${status !== 'idle' ? c.text : 'text-zinc-600'}`} />
                     </div>
-                    <div class="flex-1 min-w-0 font-sans">
-                        <div class="flex justify-between items-center gap-2 mb-1">
-                            <h3 class="font-bold text-sm text-white truncate">{title}</h3>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between gap-2">
+                            <h3 class={`font-semibold ${compact ? 'text-[11px]' : 'text-xs'} text-zinc-200 truncate`}>{title}</h3>
                             {getBadge()}
                         </div>
-                        <p class="text-xs text-zinc-400 line-clamp-1">{desc}</p>
+                        {!compact && <p class="text-[10px] text-zinc-500 mt-0.5 truncate">{desc}</p>}
                     </div>
                 </div>
             );
@@ -1196,14 +1343,47 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
         // Subcomponent: Quick Metric Stat Card
         function MetricCard({ title, value, IconComponent, color }) {
             return (
-                <div class="bg-bloomberg-card border border-bloomberg-border rounded-xl p-3 sm:p-4 flex items-center gap-2 sm:gap-3 xl:gap-4 shadow-xl select-none min-w-0">
-                    <div class={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center shrink-0 ${color}`}>
-                        <IconComponent className="w-4 h-4 sm:w-5 h-5" />
+                <div class="bg-surface-card border border-surface-border rounded-xl p-3 flex items-center gap-3 shadow-lg select-none min-w-0">
+                    <div class={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${color}`}>
+                        <IconComponent className="w-4 h-4" />
                     </div>
                     <div class="min-w-0 flex-1">
-                        <p class="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-zinc-500 whitespace-nowrap overflow-hidden text-ellipsis">{title}</p>
-                        <p class="mono font-bold text-sm sm:text-base text-white whitespace-nowrap overflow-x-auto scrollbar-none">{value}</p>
+                        <p class="text-[9px] uppercase font-bold tracking-widest text-zinc-600 truncate">{title}</p>
+                        <p class="mono font-bold text-sm text-zinc-100 truncate">{value}</p>
                     </div>
+                </div>
+            );
+        }
+
+        function TradingViewChart({ ticker }) {
+            const container = useRef();
+            
+            useEffect(() => {
+                if (!container.current) return;
+                container.current.innerHTML = '';
+                const script = document.createElement("script");
+                script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+                script.type = "text/javascript";
+                script.async = true;
+                script.innerHTML = `
+                {
+                    "autosize": true,
+                    "symbol": "${ticker.toUpperCase()}",
+                    "interval": "D",
+                    "timezone": "Etc/UTC",
+                    "theme": "dark",
+                    "style": "1",
+                    "locale": "en",
+                    "allow_symbol_change": true,
+                    "calendar": false,
+                    "support_host": "https://www.tradingview.com"
+                }`;
+                container.current.appendChild(script);
+            }, [ticker]);
+
+            return (
+                <div class="tradingview-widget-container" ref={container} style={{ height: "100%", width: "100%" }}>
+                    <div class="tradingview-widget-container__widget" style={{ height: "calc(100% - 32px)", width: "100%" }}></div>
                 </div>
             );
         }

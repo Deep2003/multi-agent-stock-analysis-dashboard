@@ -18,3 +18,7 @@ agent_run_log.json
 .vscode/
 .idea/
 .agents/
+
+# Local Run Logs
+runtime_logs.json
+risk_audit_log.json
