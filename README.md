@@ -18,7 +18,7 @@ This repository provides an end-to-end AI engineering solution for financial ana
 ## 💻 Tech Stack
 
 - **Language:** Python
-- **AI/LLM Framework:** LangChain (for agent orchestration and graph building)
+- **AI/LLM Framework:** LangGraph (for agent orchestration and graph building)
 - **Frontend UI:** Streamlit / Flask 
 - **Data Integration:** Financial data APIs (e.g., yfinance) and custom search tools
 
