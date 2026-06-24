@@ -58,32 +58,36 @@ class TokenStreamSubscriber:
 
 _subscribers_lock = threading.Lock()
 _api_lock = threading.Lock()
-active_subscribers = set()
+active_subscribers = {}
 
-def register_subscriber(sub):
+def register_subscriber(request_id, sub):
     with _subscribers_lock:
-        active_subscribers.add(sub)
+        active_subscribers[request_id] = sub
 
-def unregister_subscriber(sub):
+def unregister_subscriber(request_id):
     with _subscribers_lock:
-        active_subscribers.discard(sub)
+        active_subscribers.pop(request_id, None)
 
-def publish_token(agent_name, token):
+def publish_token(request_id, agent_name, token):
+    if not request_id:
+        return
     payload = {"event": "token", "agent": agent_name, "text": token}
     with _subscribers_lock:
-        for sub in active_subscribers:
+        sub = active_subscribers.get(request_id)
+        if sub:
             sub.put(payload)
 
 class StreamingCallback(BaseCallbackHandler):
-    def __init__(self, agent_name):
+    def __init__(self, agent_name, request_id=None):
         self.agent_name = agent_name
+        self.request_id = request_id
     def on_llm_new_token(self, token: str, **kwargs):
-        publish_token(self.agent_name, token)
+        publish_token(self.request_id, self.agent_name, token)
 
 _request_lock = threading.Lock()
 _last_request_time = 0.0
 
-def invoke_with_retry(llm_inst, messages, max_retries=5, initial_delay=3.0, backoff_factor=2.0, agent_name=None, api_key=None, selected_model="auto"):
+def invoke_with_retry(llm_inst, messages, max_retries=5, initial_delay=3.0, backoff_factor=2.0, agent_name=None, api_key=None, selected_model="auto", request_id=None):
     """Invokes the LLM instance with paced parallel execution (1.0s spacing)
     and exponential backoff with jitter to handle 429 and timeout errors.
     The httpx.Timeout on the LLM client (read=60s) is the primary hang-killer:
@@ -126,7 +130,7 @@ def invoke_with_retry(llm_inst, messages, max_retries=5, initial_delay=3.0, back
             try:
                 config = {}
                 if agent_name:
-                    config["callbacks"] = [StreamingCallback(agent_name)]
+                    config["callbacks"] = [StreamingCallback(agent_name, request_id)]
                 
                 if not api_key:
                     with _api_lock:
@@ -260,7 +264,7 @@ def run_tool_calling_loop(agent_name: str, messages: list) -> list:
     # Skip costly sequential search loops. The pre-fetched data is already comprehensive.
     return messages
 
-def _get_expert_report_raw(agent_name: str, system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto") -> dict:
+def _get_expert_report_raw(agent_name: str, system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto", request_id: str = None) -> dict:
     """Invokes the LLM using direct text completion + regex parsing.
     Bypasses with_structured_output entirely — function-calling hangs on free-tier models.
     Supports financial, tech_product, macro, and sentiment expert personas.
@@ -345,7 +349,7 @@ def _get_expert_report_raw(agent_name: str, system_prompt: str, messages: list, 
     last_err = None
     for attempt in range(3):
         try:
-            response = invoke_with_retry(llm, fallback_messages, agent_name=agent_name, api_key=api_key, selected_model=selected_model)
+            response = invoke_with_retry(llm, fallback_messages, agent_name=agent_name, api_key=api_key, selected_model=selected_model, request_id=request_id)
             text = response.content.strip()
             
             def extract_section(section_name, content):
@@ -462,7 +466,7 @@ def _get_expert_report_raw(agent_name: str, system_prompt: str, messages: list, 
             "price_target": "N/A"
         }
 
-def get_expert_report(agent_name: str, system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto") -> tuple[dict, list]:
+def get_expert_report(agent_name: str, system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto", request_id: str = None) -> tuple[dict, list]:
     """Wrapper that runs tool loop, fetches structured report, and logs agent execution.
     Returns a tuple of (report_dict, new_messages_from_loop).
     """
@@ -473,7 +477,7 @@ def get_expert_report(agent_name: str, system_prompt: str, messages: list, api_k
     new_messages = full_messages[len(messages):]
     
     # 2. Get the structured report using the full message transcript
-    report = _get_expert_report_raw(agent_name, system_prompt, full_messages, api_key=api_key, selected_model=selected_model)
+    report = _get_expert_report_raw(agent_name, system_prompt, full_messages, api_key=api_key, selected_model=selected_model, request_id=request_id)
     
     # Extract the user prompt from original messages
     user_prompt = ""
@@ -493,7 +497,7 @@ def get_expert_report(agent_name: str, system_prompt: str, messages: list, api_k
     log_agent_execution(agent_name, system_prompt, user_prompt + tool_logs, report)
     return report, new_messages
 
-def _get_risk_audit_report_raw(system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto") -> dict:
+def _get_risk_audit_report_raw(system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto", request_id: str = None) -> dict:
     """Invokes the LLM using direct text completion + regex parsing.
     Bypasses with_structured_output entirely — function-calling hangs on free-tier models.
     """
@@ -520,7 +524,7 @@ def _get_risk_audit_report_raw(system_prompt: str, messages: list, api_key: str 
     
     fallback_messages = messages + [{"role": "user", "content": fallback_prompt}]
     try:
-        response = invoke_with_retry(llm, fallback_messages, agent_name="risk", api_key=api_key, selected_model=selected_model)
+        response = invoke_with_retry(llm, fallback_messages, agent_name="risk", api_key=api_key, selected_model=selected_model, request_id=request_id)
         text = response.content.strip()
         
         def extract_section(section_name, content):
@@ -591,9 +595,9 @@ def _get_risk_audit_report_raw(system_prompt: str, messages: list, api_key: str 
             "cross_talk_log": []
         }
 
-def get_risk_audit_report(system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto") -> dict:
+def get_risk_audit_report(system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto", request_id: str = None) -> dict:
     """Wrapper that intercepts get_risk_audit_report calls, logging full inputs and outputs to a shared file."""
-    report = _get_risk_audit_report_raw(system_prompt, messages, api_key=api_key, selected_model=selected_model)
+    report = _get_risk_audit_report_raw(system_prompt, messages, api_key=api_key, selected_model=selected_model, request_id=request_id)
     
     # Extract the user prompt from messages payload
     user_prompt = ""

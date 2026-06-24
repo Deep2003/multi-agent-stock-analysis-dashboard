@@ -278,6 +278,7 @@ class AgentState(TypedDict):
     insider_data: str
     reddit_data: str
     technical_data: str
+    request_id: str
     expert_reports: Annotated[dict, merge_expert_reports] # Stores structured dictionary payloads of 5 experts
     revision_count: int    # Enforces a strict loop guard in the supervisor review cycle
     selected_model: str

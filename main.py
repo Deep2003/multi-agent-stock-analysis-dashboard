@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import re
+import uuid
 import statistics
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
@@ -87,6 +88,9 @@ async def get_average_runtimes():
     except Exception as e:
         return JSONResponse({"averages": {}})
 
+# Global semaphore to throttle concurrent analysis runs (FIFO execution queue)
+request_semaphore = asyncio.Semaphore(1)
+
 @app_server.get("/api/stream")
 async def stream_analysis(
     query: str = Query(..., description="The stock query statement to analyze."),
@@ -98,6 +102,7 @@ async def stream_analysis(
     state handoffs, and raw expert report Pydantic payloads back in real-time.
     """
     async def event_generator():
+        request_id = str(uuid.uuid4())
         initial_state = {
             "messages": [HumanMessage(content=query)],
             "api_key": api_key,
@@ -120,125 +125,134 @@ async def stream_analysis(
             "revision_count": 0,
             "current_price": 0.0,
             "price_target": 0.0,
-            "implied_movement_pct": 0.0
+            "implied_movement_pct": 0.0,
+            "request_id": request_id
         }
         
-        yield f"data: {json.dumps({'event': 'start', 'message': 'Lead Supervisor parsing stock query...'})}\n\n"
+        yield f"data: {json.dumps({'event': 'queue', 'message': 'Acquiring system lock. Waiting in execution queue...'})}\n\n"
         
-        sub = TokenStreamSubscriber()
-        register_subscriber(sub)
-        
-        async def run_graph():
-            start_time = time.time()
+        # Wait for the lock while yielding periodic heartbeat messages to prevent client read timeouts
+        acquired = False
+        wait_seconds = 0
+        while not acquired:
             try:
-                async for event in app.astream(initial_state, stream_mode="values"):
-                    messages = event.get("messages", [])
-                    if not messages:
-                        continue
-                    
-                    last_msg = messages[-1]
-                    
-                    sender_val = getattr(last_msg, "name", None) or getattr(last_msg, "type", "System")
-                    sender = str(sender_val).lower() if sender_val else "system"
-                    
-                    active_agent_val = event.get("active_agent", "") or ""
-                    active_agent = str(active_agent_val).lower()
-                    
-                    financial_raw = event.get("financial_data", "")
-                    
-                    # Parse metrics dynamically to update stats card
-                    metrics = {}
-                    if financial_raw:
-                        pe_match = re.search(r"Trailing P/E:\s*([0-9\.]+)", financial_raw)
-                        mc_match = re.search(r"Market Cap:\s*\$([0-9,\.]+\s*[A-Za-z]+)", financial_raw)
-                        eps_match = re.search(r"EPS \(Trailing\):\s*([0-9\.-]+)", financial_raw)
-                        price_match = re.search(r"Current Price:\s*\$([0-9\.]+)", financial_raw)
-                        sma50_match = re.search(r"50-Day SMA:\s*\$([0-9\.]+)", financial_raw)
-                        sma200_match = re.search(r"200-Day SMA:\s*\$([0-9\.]+)", financial_raw)
-                        
-                        if pe_match: metrics["pe"] = pe_match.group(1)
-                        if mc_match: metrics["market_cap"] = mc_match.group(1)
-                        if eps_match: metrics["eps"] = eps_match.group(1)
-                        if price_match: metrics["price"] = price_match.group(1)
-                        if sma50_match: metrics["sma50"] = sma50_match.group(1)
-                        if sma200_match: metrics["sma200"] = sma200_match.group(1)
-
-                    # Parse top news articles from sentiment_data to send to the frontend
-                    news_articles = []
-                    sentiment_raw = event.get("sentiment_data", "") or ""
-                    if sentiment_raw:
-                        lines = sentiment_raw.split("\n")
-                        for line in lines:
-                            # Match lines like: "1. Headline text (Source: Bloomberg, Date: 2024-06-20)"
-                            m = re.match(r"^\d+\.\s+(.+?)\s+\(Source:\s*(.+?),\s*Date:\s*(.+?)\)\s*$", line.strip())
-                            if m:
-                                news_articles.append({
-                                    "title": m.group(1).strip(),
-                                    "source": m.group(2).strip(),
-                                    "date": m.group(3).strip(),
-                                })
-                            elif re.match(r"^\d+\.", line.strip()):
-                                # Fallback: grab plain numbered lines without structured metadata
-                                clean = re.sub(r"^\d+\.\s*", "", line.strip())
-                                if clean:
-                                    news_articles.append({"title": clean, "source": "", "date": ""})
-                        news_articles = news_articles[:8]  # Cap at 8 articles
-
-                    payload = {
-                        "event": "update",
-                        "agent": sender,
-                        "active_agent": active_agent,
-                        "message": last_msg.content,
-                        "ticker": event.get("ticker", ""),
-                        "metrics": metrics,
-                        "news_articles": news_articles,
-                        "expert_reports": event.get("expert_reports", {}), # Push raw structured reports
-                        "revision_count": event.get("revision_count", 0),  # Push revision count
-                        "current_price": event.get("current_price", 0.0),
-                        "price_target": event.get("price_target", 0.0),
-                        "implied_movement_pct": event.get("implied_movement_pct", 0.0)
-                    }
-                    sub.put(payload)
-                    
-                total_duration = time.time() - start_time
-                log_runtime(model, total_duration)
+                await asyncio.wait_for(request_semaphore.acquire(), timeout=15.0)
+                acquired = True
+            except asyncio.TimeoutError:
+                wait_seconds += 15
+                yield f"data: {json.dumps({'event': 'queue', 'message': f'Waiting in analysis queue ({wait_seconds}s elapsed)...'})}\n\n"
                 
-                sub.put({"event": "complete", "message": "Institutional committee analysis completed successfully!"})
-            except Exception as e:
-                sub.put({"event": "error", "message": str(e)})
-            finally:
-                sub.put(None)
-                
-        graph_task = asyncio.create_task(run_graph())
-        deadline = time.monotonic() + 600  # 10-minute hard wall-clock limit
-        
         try:
-            while True:
-                # Drain all available queue items to the client
-                while not sub.q.empty():
-                    item = sub.q.get_nowait()
-                    if item is None:
-                        return  # Sentinel: graph finished cleanly
-                    yield f"data: {json.dumps(item)}\n\n"
+            yield f"data: {json.dumps({'event': 'start', 'message': 'Lead Supervisor parsing stock query...'})}\n\n"
+            
+            sub = TokenStreamSubscriber()
+            register_subscriber(request_id, sub)
+            
+            async def run_graph():
+                start_time = time.time()
+                try:
+                    async for event in app.astream(initial_state, stream_mode="values"):
+                        messages = event.get("messages", [])
+                        if not messages:
+                            continue
+                        
+                        last_msg = messages[-1]
+                        sender_val = getattr(last_msg, "name", None) or getattr(last_msg, "type", "System")
+                        sender = str(sender_val).lower() if sender_val else "system"
+                        active_agent_val = event.get("active_agent", "") or ""
+                        active_agent = str(active_agent_val).lower()
+                        financial_raw = event.get("financial_data", "")
+                        
+                        # Parse metrics dynamically to update stats card
+                        metrics = {}
+                        if financial_raw:
+                            pe_match = re.search(r"Trailing P/E:\s*([0-9\.]+)", financial_raw)
+                            mc_match = re.search(r"Market Cap:\s*\$([0-9,\.]+\s*[A-Za-z]+)", financial_raw)
+                            eps_match = re.search(r"EPS \(Trailing\):\s*([0-9\.-]+)", financial_raw)
+                            price_match = re.search(r"Current Price:\s*\$([0-9\.]+)", financial_raw)
+                            sma50_match = re.search(r"50-Day SMA:\s*\$([0-9\.]+)", financial_raw)
+                            sma200_match = re.search(r"200-Day SMA:\s*\$([0-9\.]+)", financial_raw)
+                            
+                            if pe_match: metrics["pe"] = pe_match.group(1)
+                            if mc_match: metrics["market_cap"] = mc_match.group(1)
+                            if eps_match: metrics["eps"] = eps_match.group(1)
+                            if price_match: metrics["price"] = price_match.group(1)
+                            if sma50_match: metrics["sma50"] = sma50_match.group(1)
+                            if sma200_match: metrics["sma200"] = sma200_match.group(1)
+ 
+                        # Parse top news articles from sentiment_data to send to the frontend
+                        news_articles = []
+                        sentiment_raw = event.get("sentiment_data", "") or ""
+                        if sentiment_raw:
+                            lines = sentiment_raw.split("\n")
+                            for line in lines:
+                                m = re.match(r"^\d+\.\s+(.+?)\s+\(Source:\s*(.+?),\s*Date:\s*(.+?)\)\s*$", line.strip())
+                                if m:
+                                    news_articles.append({
+                                        "title": m.group(1).strip(),
+                                        "source": m.group(2).strip(),
+                                        "date": m.group(3).strip(),
+                                    })
+                                elif re.match(r"^\d+\.", line.strip()):
+                                    clean = re.sub(r"^\d+\.\s*", "", line.strip())
+                                    if clean:
+                                        news_articles.append({"title": clean, "source": "", "date": ""})
+                            news_articles = news_articles[:8]
+ 
+                        payload = {
+                            "event": "update",
+                            "agent": sender,
+                            "active_agent": active_agent,
+                            "message": last_msg.content,
+                            "ticker": event.get("ticker", ""),
+                            "metrics": metrics,
+                            "news_articles": news_articles,
+                            "expert_reports": event.get("expert_reports", {}),
+                            "revision_count": event.get("revision_count", 0),
+                            "current_price": event.get("current_price", 0.0),
+                            "price_target": event.get("price_target", 0.0),
+                            "implied_movement_pct": event.get("implied_movement_pct", 0.0)
+                        }
+                        sub.put(payload)
+                        
+                    total_duration = time.time() - start_time
+                    log_runtime(model, total_duration)
                     
-                # Exit if graph finished and queue is empty
-                if graph_task.done() and sub.q.empty():
-                    break
-                
-                # Enforce overall 10-minute deadline
-                if time.monotonic() > deadline:
-                    msg = "Analysis timed out after 10 minutes. Rate limits on the free API are causing delays — please try again."
-                    yield f"data: {json.dumps({'event': 'error', 'message': msg})}\n\n"
+                    sub.put({"event": "complete", "message": "Institutional committee analysis completed successfully!"})
+                except Exception as e:
+                    sub.put({"event": "error", "message": str(e)})
+                finally:
+                    sub.put(None)
+                    
+            graph_task = asyncio.create_task(run_graph())
+            deadline = time.monotonic() + 600  # 10-minute hard limit
+            
+            try:
+                while True:
+                    while not sub.q.empty():
+                        item = sub.q.get_nowait()
+                        if item is None:
+                            return  # Sentinel: graph finished cleanly
+                        yield f"data: {json.dumps(item)}\n\n"
+                        
+                    if graph_task.done() and sub.q.empty():
+                        break
+                        
+                    if time.monotonic() > deadline:
+                        msg = "Analysis timed out after 10 minutes. Rate limits on the free API are causing delays — please try again."
+                        yield f"data: {json.dumps({'event': 'error', 'message': msg})}\n\n"
+                        graph_task.cancel()
+                        break
+                        
+                    await asyncio.sleep(0.05)
+            finally:
+                unregister_subscriber(request_id)
+                if not graph_task.done():
                     graph_task.cancel()
-                    break
-                    
-                await asyncio.sleep(0.05)
         finally:
-            unregister_subscriber(sub)
-            if not graph_task.done():
-                graph_task.cancel()
-
-
+            if acquired:
+                request_semaphore.release()
+ 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 

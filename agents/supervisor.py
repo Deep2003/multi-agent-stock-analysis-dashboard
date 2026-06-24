@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 import re
 import json
@@ -256,7 +257,7 @@ def synthesis_node(state: AgentState):
         print(f"[Synthesis]: Attempt {attempt + 1}/{MAX_SYNTHESIS_ATTEMPTS} using model: {model_id}")
 
         try:
-            response = invoke_with_retry(current_llm, messages, agent_name="supervisor", api_key=api_key, selected_model=model_id)
+            response = invoke_with_retry(current_llm, messages, agent_name="supervisor", api_key=api_key, selected_model=model_id, request_id=state.get("request_id"))
             text = response.content.strip()
             # Strip any accidental markdown code fences
             json_text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)

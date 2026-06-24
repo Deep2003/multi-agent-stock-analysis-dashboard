@@ -53,7 +53,7 @@ def financial_node(state: AgentState):
         {"role": "user", "content": user_prompt}
     ]
     
-    report, loop_msgs = get_expert_report("financial", system_prompt, messages_payload, api_key=state.get("api_key"), selected_model=state.get("selected_model", "auto"))
+    report, loop_msgs = get_expert_report("financial", system_prompt, messages_payload, api_key=state.get("api_key"), selected_model=state.get("selected_model", "auto"), request_id=state.get("request_id"))
     
     reports = dict(state.get("expert_reports", {}))
     reports["financial"] = report

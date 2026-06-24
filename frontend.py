@@ -388,7 +388,9 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
 
       es.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (data.event === "start") {
+        if (data.event === "queue") {
+          setLogs(prev => [...prev, { type: "system", message: data.message }]);
+        } else if (data.event === "start") {
           setLogs(prev => [...prev, { type: "system", message: data.message }]);
           fetchAgentLogs();
         } else if (data.event === "token") {

@@ -36,7 +36,7 @@ Format clearly with bullet points."""
     selected_model = state.get("selected_model", "auto")
     
     try:
-        response = invoke_with_retry(llm, messages, agent_name="technical", selected_model=selected_model)
+        response = invoke_with_retry(llm, messages, agent_name="technical", selected_model=selected_model, request_id=state.get("request_id"))
         report_text = response.content
     except Exception as e:
         print(f"[*] Technical LLM failed: {e}")
