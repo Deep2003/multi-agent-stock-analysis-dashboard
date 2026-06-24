@@ -195,12 +195,17 @@ def synthesis_node(state: AgentState):
         f"EXPERT COMMITTEE SUBMISSIONS:\n{expert_details}\n\n"
         f"MANDATE: Audit for temporal coherence ({current_date_str}). Override any anachronisms inline.\n"
         f"FACTUAL RULE: Only use numbers explicitly stated in expert submissions or pre-computed above. "
-        f"Never invent prices, EPS, P/E, revenue, or margins.\n\n"
+        f"Never invent prices, EPS, P/E, revenue, or margins. However, you MUST determine the final blended "
+        f"'price_target' for the stock based on the expert reports and targets. You may use the pre-computed "
+        f"median directly, or adjust it if the qualitative research or risk audit justifies a different target. "
+        f"Record your final determined price target in the 'price_target' JSON key.\n\n"
         f"Output a JSON object with exactly these keys:\n"
         f"  current_price (float), price_target (float), implied_movement_pct (float), executive_summary (string)\n"
         f"The executive_summary MUST be a rich markdown report using this structure:\n"
         f"# 🏛️ Institutional Investment Committee Consensus Thesis: {ticker.upper()}\n"
         f"## 📊 Executive Summary & Key Thesis Takeaways\n"
+        f"- **Current Price**: ${current_price:.2f}\n"
+        f"- **Committee Consensus Price Target**: ${consensus_price_target:.2f} ({implied_movement_pct:+.2f}%)\n\n"
         f"> [!NOTE]\n> High-level overview.\n"
         f"- **Core Finding 1**: [primary driver from financials or product moat]\n"
         f"- **Core Finding 2**: [main growth catalyst or macro tailwind]\n"
@@ -225,41 +230,74 @@ def synthesis_node(state: AgentState):
 
     messages = [{"role": "system", "content": system_prompt}]
 
-    # Plain-text invocation (no with_structured_output — avoids double-call on failure)
+    # Plain-text invocation — retry loop with model fallback chain
     res_current_price = current_price
     res_price_target = consensus_price_target
     res_implied_movement = implied_movement_pct
     res_summary = ""
+    api_key = state.get("api_key")
+    selected_model = state.get("selected_model", "auto")
 
-    try:
-        response = invoke_with_retry(llm, messages, agent_name="supervisor", api_key=state.get("api_key"))
-        text = response.content.strip()
-        # Strip any accidental markdown code fences
-        json_text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-        json_text = re.sub(r"\s*```$", "", json_text).strip()
-        parsed = json.loads(json_text)
-        # Use LLM-generated summary prose but our own pre-computed numbers
-        res_summary = parsed.get("executive_summary", "")
-        # Accept LLM's price/target only if they're non-zero; our computed values are authoritative
-        llm_price = float(parsed.get("current_price", 0) or 0)
-        llm_target = float(parsed.get("price_target", 0) or 0)
-        if llm_price > 0:
-            res_current_price = llm_price
-        if llm_target > 0:
-            res_price_target = llm_target
-        # Always recompute implied movement deterministically
-        if res_current_price > 0 and res_price_target > 0:
-            res_implied_movement = round(
-                ((res_price_target - res_current_price) / res_current_price) * 100, 2
-            )
-    except Exception as e:
-        print(f"[*] Synthesis JSON parse failed: {e}. Building from expert data.")
-        # Hard fallback: build a minimal but correct summary from what we have
+    # Build a list of models to try: selected first, then FREE_MODELS fallbacks
+    from agents.base import FREE_MODELS, _create_llm
+    if selected_model and selected_model != "auto":
+        models_to_try = [selected_model] + FREE_MODELS
+    else:
+        models_to_try = list(FREE_MODELS)
+
+    MAX_SYNTHESIS_ATTEMPTS = 3  # Total attempts across all models
+    attempt = 0
+    last_err = None
+
+    while attempt < MAX_SYNTHESIS_ATTEMPTS:
+        # Pick which model to use for this attempt
+        model_id = models_to_try[min(attempt, len(models_to_try) - 1)]
+        current_llm = _create_llm(model_id, api_key=api_key)
+        print(f"[Synthesis]: Attempt {attempt + 1}/{MAX_SYNTHESIS_ATTEMPTS} using model: {model_id}")
+
+        try:
+            response = invoke_with_retry(current_llm, messages, agent_name="supervisor", api_key=api_key, selected_model=model_id)
+            text = response.content.strip()
+            # Strip any accidental markdown code fences
+            json_text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+            json_text = re.sub(r"\s*```$", "", json_text).strip()
+            parsed = json.loads(json_text)
+            # Use LLM-generated summary prose but our own pre-computed numbers
+            res_summary = parsed.get("executive_summary", "")
+            # Accept LLM's price/target only if they're non-zero; our computed values are authoritative
+            llm_price = float(parsed.get("current_price", 0) or 0)
+            llm_target = float(parsed.get("price_target", 0) or 0)
+            if llm_price > 0:
+                res_current_price = llm_price
+            if llm_target > 0:
+                res_price_target = llm_target
+            # Always recompute implied movement deterministically
+            if res_current_price > 0 and res_price_target > 0:
+                res_implied_movement = round(
+                    ((res_price_target - res_current_price) / res_current_price) * 100, 2
+                )
+            # Success — break out of the retry loop
+            print(f"[Synthesis]: Successfully generated thesis on attempt {attempt + 1}.")
+            break
+        except Exception as e:
+            last_err = e
+            print(f"[Synthesis]: Attempt {attempt + 1} failed ({e}). Retrying with next model...")
+            attempt += 1
+            time.sleep(2)
+    else:
+        # All attempts exhausted — build a minimal clean fallback from expert data (never show error message)
+        print(f"[Synthesis]: All {MAX_SYNTHESIS_ATTEMPTS} attempts failed. Building deterministic fallback thesis.")
         recs = [r.get("recommendation", "Hold") for k, r in expert_reports.items() if k != "risk"]
         rec_counts = {}
         for r in recs:
             rec_counts[r] = rec_counts.get(r, 0) + 1
         top_rec = max(rec_counts, key=rec_counts.get) if rec_counts else "Hold"
+
+        expert_summary_lines = []
+        for k, r in expert_reports.items():
+            if k != "risk":
+                analysis = (r.get("core_analysis") or "")[:300]
+                expert_summary_lines.append(f"**{k.replace('_', ' ').title()}**: {analysis}")
 
         res_summary = (
             f"# 🏛️ Institutional Investment Committee Consensus Thesis: {ticker.upper()}\n\n"
@@ -267,7 +305,10 @@ def synthesis_node(state: AgentState):
             f"- Committee Consensus: **{top_rec}**\n"
             f"- Current Price: **${res_current_price:.2f}**\n"
             f"- Consensus Price Target: **${res_price_target:.2f}** ({res_implied_movement:+.2f}%)\n\n"
-            f"## ⚠️ Note\nFull synthesis unavailable due to model error. See individual expert reports above.\n"
+            f"## 🎯 Committee Consensus Recommendation: {top_rec}\n\n"
+            f"---\n\n"
+            f"## 📋 Expert Committee Findings\n\n"
+            + "\n\n".join(expert_summary_lines)
         )
 
     log_agent_execution(

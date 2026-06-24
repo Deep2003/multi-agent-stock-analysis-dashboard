@@ -7,9 +7,10 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from state import ExpertReport, RiskExpertOutput, TechExpertReport, MacroExpertReport, SentimentExpertReport
 
-# Use explicit httpx.Timeout so that 'read' fires if the model stops streaming
-# for 25s (catches hanging responses that never close the connection).
-_http_timeout = httpx.Timeout(connect=10.0, read=25.0, write=25.0, pool=5.0)
+# Use explicit httpx.Timeout so that 'read' fires if the model stops streaming.
+# We use a longer read/connect timeout (60s read, 15s connect) to allow large free
+# models like LLaMA 3.3 70B sufficient time to queue and generate responses.
+_http_timeout = httpx.Timeout(connect=15.0, read=60.0, write=60.0, pool=10.0)
 
 def _create_llm(model_id: str, api_key: str = None):
     return ChatOpenAI(
@@ -26,13 +27,19 @@ def _create_llm(model_id: str, api_key: str = None):
         }
     )
 
-# Free models on OpenRouter (validated 2026-06)
+# Best active free models on OpenRouter with verified tool-calling support (validated 2026-06)
+# Ordered by capability: largest/strongest first, smaller fallbacks after.
 FREE_MODELS = [
-    "meta-llama/llama-3.3-70b-instruct:free",    # Primary
-    "google/gemma-3-27b-it:free",                  # Fallback 1
-    "mistralai/mistral-7b-instruct:free",          # Fallback 2
-    "microsoft/phi-3-medium-128k-instruct:free",   # Fallback 3
-    "google/gemma-4-31b-it:free",                  # Fallback 4
+    "meta-llama/llama-3.3-70b-instruct:free",       # Primary — strong reasoning, great tool use
+    "google/gemma-4-31b-it:free",                   # Gemma 4 31B — extremely fast and capable
+    "qwen/qwen3-next-80b-a3b-instruct:free",        # Qwen3 Next 80B — very strong
+    "google/gemma-4-26b-a4b-it:free",               # Gemma 4 26B MoE
+    "qwen/qwen3-coder:free",                        # Qwen3 Coder — excellent structure
+    "openai/gpt-oss-120b:free",                     # GPT-OSS 120B
+    "nousresearch/hermes-3-llama-3.1-405b:free",     # Hermes 3 Llama 3.1 405B — large fallback
+    "cognitivecomputations/dolphin-mistral-24b-venice-edition:free", # Dolphin Mistral 24B
+    "nvidia/nemotron-3-nano-30b-a3b:free",          # Nemotron 3 Nano 30B
+    "openrouter/free",                              # OpenRouter Auto-router — last resort
 ]
 
 llm = [_create_llm(m) for m in FREE_MODELS]
@@ -79,8 +86,8 @@ _last_request_time = 0.0
 def invoke_with_retry(llm_inst, messages, max_retries=5, initial_delay=3.0, backoff_factor=2.0, agent_name=None, api_key=None, selected_model="auto"):
     """Invokes the LLM instance with paced parallel execution (1.0s spacing)
     and exponential backoff with jitter to handle 429 and timeout errors.
-    The httpx.Timeout on the LLM client (read=30s) is the primary hang-killer:
-    if the model stops streaming for 30s, the connection is forcibly dropped.
+    The httpx.Timeout on the LLM client (read=60s) is the primary hang-killer:
+    if the model stops streaming for 60s, the connection is forcibly dropped.
     """
     global _last_request_time
     
@@ -103,11 +110,16 @@ def invoke_with_retry(llm_inst, messages, max_retries=5, initial_delay=3.0, back
     last_exception = None
     
     if selected_model and selected_model != "auto":
-        models_to_try = [_create_llm(selected_model, api_key=api_key)]
+        # Build fallback list with selected model first, then all other FREE_MODELS
+        unique_models = [selected_model]
+        for m in FREE_MODELS:
+            if m not in unique_models:
+                unique_models.append(m)
+        models_to_try = [_create_llm(m, api_key=api_key) for m in unique_models]
     elif api_key:
         models_to_try = [_create_llm(m, api_key=api_key) for m in FREE_MODELS]
     else:
-        models_to_try = llm_inst if isinstance(llm_inst, list) else [llm_inst]
+        models_to_try = llm
     
     for attempt in range(max_retries):
         for current_llm in models_to_try:
@@ -153,17 +165,15 @@ def invoke_with_retry(llm_inst, messages, max_retries=5, initial_delay=3.0, back
                     "unauthorized" in err_str.lower()
                 )
                 
-                if is_rate_limit or is_timeout or is_unavailable or is_forbidden:
-                    reason = "rate limit" if is_rate_limit else "timeout" if is_timeout else "forbidden" if is_forbidden else "unavailable"
-                    model_id = current_llm.model_name if hasattr(current_llm, 'model_name') else "Unknown Model"
-                    
-                    if current_llm != models_to_try[-1]:
-                        print(f"[*] {reason.capitalize()} hit on {model_id} ({err_str[:60]}). Moving to fallback model instantly...")
-                        continue
-                    else:
-                        break # All fallbacks exhausted, trigger sleep and retry loop
+                # Treat ALL exceptions (including 500s, model overloaded, etc.) as retriable errors
+                reason = "rate limit" if is_rate_limit else "timeout" if is_timeout else "forbidden" if is_forbidden else "unavailable" if is_unavailable else "model error"
+                model_id = current_llm.model_name if hasattr(current_llm, 'model_name') else "Unknown Model"
+                
+                if current_llm != models_to_try[-1]:
+                    print(f"[*] {reason.capitalize()} hit on {model_id} ({err_str[:60]}). Moving to fallback model instantly...")
+                    continue
                 else:
-                    raise e
+                    break # All fallbacks exhausted, trigger sleep and retry loop
                     
         # If we reach here, ALL models in the fallback chain failed for this attempt
         if attempt < max_retries - 1:
@@ -330,118 +340,127 @@ def _get_expert_report_raw(agent_name: str, system_prompt: str, messages: list, 
             "Do not write any other conversational text or surrounding brackets."
         )
         
-    fallback_messages = messages + [{"role": "user", "content": fallback_prompt}]
-    try:
-        response = invoke_with_retry(llm, fallback_messages, agent_name=agent_name, api_key=api_key, selected_model=selected_model)
-        text = response.content.strip()
-        
-        def extract_section(section_name, content):
-            pattern = rf"### {section_name}\s*(.*?)(?=###|$)"
-            match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
-            return match.group(1).strip() if match else "N/A"
+    citation_rule = "\n\nCRITICAL RULE: You MUST explicitly cite the ORIGINAL source (e.g., the specific news outlet, SEC filing, or financial report, NOT the API) and the ORIGINAL publication/filing date for each piece of data, metric, news event, or claim you include in your analysis (e.g., 'Source: Bloomberg News, 2024-05-12'). Do not use the current date or access date as the citation.\n"
+    fallback_messages = messages + [{"role": "user", "content": fallback_prompt + citation_rule}]
+    last_err = None
+    for attempt in range(3):
+        try:
+            response = invoke_with_retry(llm, fallback_messages, agent_name=agent_name, api_key=api_key, selected_model=selected_model)
+            text = response.content.strip()
             
-        rec = extract_section("Recommendation", text)
-        rec = normalize_recommendation(rec)
-            
-        if agent_name == "tech_product":
-            roadmap = []
-            roadmap_text = extract_section("Future Product Roadmap", text)
-            items = re.split(r"-\s*\*\*Product\*\*:", roadmap_text)
-            for item in items[1:]:
-                name_match = re.search(r"^\s*(.*?)\n", item)
-                timeline_match = re.search(r"-\s*\*\*Timeline\*\*:\s*(.*?)\n", item, re.IGNORECASE)
-                feasibility_match = re.search(r"-\s*\*\*Feasibility\*\*:\s*(High|Medium|Low)", item, re.IGNORECASE)
-                desc_match = re.search(r"-\s*\*\*Description\*\*:\s*(.*?)(?=- \*\*Product\*\*|- \*\*Timeline\*\*|- \*\*Feasibility\*\*|- \*\*Description\*\*|$)", item, re.DOTALL | re.IGNORECASE)
+            def extract_section(section_name, content):
+                pattern = rf"### {section_name}\s*(.*?)(?=###|$)"
+                match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
+                return match.group(1).strip() if match else "N/A"
                 
-                name = name_match.group(1).strip() if name_match else "Upcoming Product"
-                timeline = timeline_match.group(1).strip() if timeline_match else "Q4 2026"
-                feasibility = feasibility_match.group(1).strip() if feasibility_match else "Medium"
+            rec = extract_section("Recommendation", text)
+            rec = normalize_recommendation(rec)
                 
-                if not desc_match:
-                    lines = [l.strip() for l in item.split("\n") if l.strip() and not any(k in l for k in ["**Timeline**", "**Feasibility**"])]
-                    desc = " ".join(lines)
-                else:
-                    desc = desc_match.group(1).strip()
+            if agent_name == "tech_product":
+                roadmap = []
+                roadmap_text = extract_section("Future Product Roadmap", text)
+                items = re.split(r"-\s*\*\*Product\*\*:", roadmap_text)
+                for item in items[1:]:
+                    name_match = re.search(r"^\s*(.*?)\n", item)
+                    timeline_match = re.search(r"-\s*\*\*Timeline\*\*:\s*(.*?)\n", item, re.IGNORECASE)
+                    feasibility_match = re.search(r"-\s*\*\*Feasibility\*\*:\s*(High|Medium|Low)", item, re.IGNORECASE)
+                    desc_match = re.search(r"-\s*\*\*Description\*\*:\s*(.*?)(?=- \*\*Product\*\*|- \*\*Timeline\*\*|- \*\*Feasibility\*\*|- \*\*Description\*\*|$)", item, re.DOTALL | re.IGNORECASE)
                     
-                roadmap.append({
-                    "product_name": name,
-                    "timeline": timeline,
-                    "feasibility": feasibility,
-                    "description": desc
-                })
-                
-            return {
-                "core_analysis": extract_section("Core Analysis", text),
-                "product_roadmap": roadmap,
-                "innovation_risk": extract_section("Innovation Risk", text),
-                "bull_case": extract_section("Bull Case", text),
-                "bear_case": extract_section("Bear Case", text),
-                "recommendation": rec,
-                "price_target": extract_section("Price Target", text)
-            }
-        elif agent_name == "macro":
-            return {
-                "core_analysis": extract_section("Core Analysis", text),
-                "industry_comparison": extract_section("Industry Comparison", text),
-                "bull_case": extract_section("Bull Case", text),
-                "bear_case": extract_section("Bear Case", text),
-                "recommendation": rec,
-                "price_target": extract_section("Price Target", text)
-            }
-        elif agent_name == "sentiment":
-            return {
-                "core_analysis": extract_section("Core Analysis", text),
-                "analyst_consensus": extract_section("Analyst Consensus", text),
-                "bull_case": extract_section("Bull Case", text),
-                "bear_case": extract_section("Bear Case", text),
-                "recommendation": rec,
-                "price_target": extract_section("Price Target", text)
-            }
-        else:
-            return {
-                "core_analysis": extract_section("Core Analysis", text),
-                "bull_case": extract_section("Bull Case", text),
-                "bear_case": extract_section("Bear Case", text),
-                "recommendation": rec,
-                "price_target": extract_section("Price Target", text)
-            }
-    except Exception as err:
-        if agent_name == "tech_product":
-            return {
-                "core_analysis": f"Error parsing report data: {err}",
-                "product_roadmap": [],
-                "innovation_risk": "N/A",
-                "bull_case": "N/A",
-                "bear_case": "N/A",
-                "recommendation": "Hold",
-                "price_target": "N/A"
-            }
-        elif agent_name == "macro":
-            return {
-                "core_analysis": f"Error parsing report data: {err}",
-                "industry_comparison": "N/A",
-                "bull_case": "N/A",
-                "bear_case": "N/A",
-                "recommendation": "Hold",
-                "price_target": "N/A"
-            }
-        elif agent_name == "sentiment":
-            return {
-                "core_analysis": f"Error parsing report data: {err}",
-                "analyst_consensus": "N/A",
-                "bull_case": "N/A",
-                "bear_case": "N/A",
-                "recommendation": "Hold",
-                "price_target": "N/A"
-            }
-        else:
-            return {
-                "core_analysis": f"Error parsing report data: {err}",
-                "bull_case": "N/A",
-                "bear_case": "N/A",
-                "recommendation": "Hold",
-                "price_target": "N/A"
-            }
+                    name = name_match.group(1).strip() if name_match else "Upcoming Product"
+                    timeline = timeline_match.group(1).strip() if timeline_match else "Q4 2026"
+                    feasibility = feasibility_match.group(1).strip() if feasibility_match else "Medium"
+                    
+                    if not desc_match:
+                        lines = [l.strip() for l in item.split("\n") if l.strip() and not any(k in l for k in ["**Timeline**", "**Feasibility**"])]
+                        desc = " ".join(lines)
+                    else:
+                        desc = desc_match.group(1).strip()
+                        
+                    roadmap.append({
+                        "product_name": name,
+                        "timeline": timeline,
+                        "feasibility": feasibility,
+                        "description": desc
+                    })
+                    
+                return {
+                    "core_analysis": extract_section("Core Analysis", text),
+                    "product_roadmap": roadmap,
+                    "innovation_risk": extract_section("Innovation Risk", text),
+                    "bull_case": extract_section("Bull Case", text),
+                    "bear_case": extract_section("Bear Case", text),
+                    "recommendation": rec,
+                    "price_target": extract_section("Price Target", text)
+                }
+            elif agent_name == "macro":
+                return {
+                    "core_analysis": extract_section("Core Analysis", text),
+                    "industry_comparison": extract_section("Industry Comparison", text),
+                    "bull_case": extract_section("Bull Case", text),
+                    "bear_case": extract_section("Bear Case", text),
+                    "recommendation": rec,
+                    "price_target": extract_section("Price Target", text)
+                }
+            elif agent_name == "sentiment":
+                return {
+                    "core_analysis": extract_section("Core Analysis", text),
+                    "analyst_consensus": extract_section("Analyst Consensus", text),
+                    "bull_case": extract_section("Bull Case", text),
+                    "bear_case": extract_section("Bear Case", text),
+                    "recommendation": rec,
+                    "price_target": extract_section("Price Target", text)
+                }
+            else:
+                return {
+                    "core_analysis": extract_section("Core Analysis", text),
+                    "bull_case": extract_section("Bull Case", text),
+                    "bear_case": extract_section("Bear Case", text),
+                    "recommendation": rec,
+                    "price_target": extract_section("Price Target", text)
+                }
+        except Exception as err:
+            last_err = err
+            print(f"[*] {agent_name} failed to generate or parse valid report (attempt {attempt+1}/3): {err}. Retrying LLM prompt...")
+            time.sleep(2)
+
+    # If all 3 attempts fail, return a clean fallback without leaking technical tracebacks to the dashboard
+    err_msg = "N/A - Analysis unavailable due to repeated API failures or model instability."
+    if agent_name == "tech_product":
+        return {
+            "core_analysis": err_msg,
+            "product_roadmap": [],
+            "innovation_risk": "N/A",
+            "bull_case": "N/A",
+            "bear_case": "N/A",
+            "recommendation": "Hold",
+            "price_target": "N/A"
+        }
+    elif agent_name == "macro":
+        return {
+            "core_analysis": err_msg,
+            "industry_comparison": "N/A",
+            "bull_case": "N/A",
+            "bear_case": "N/A",
+            "recommendation": "Hold",
+            "price_target": "N/A"
+        }
+    elif agent_name == "sentiment":
+        return {
+            "core_analysis": err_msg,
+            "analyst_consensus": "N/A",
+            "bull_case": "N/A",
+            "bear_case": "N/A",
+            "recommendation": "Hold",
+            "price_target": "N/A"
+        }
+    else:
+        return {
+            "core_analysis": err_msg,
+            "bull_case": "N/A",
+            "bear_case": "N/A",
+            "recommendation": "Hold",
+            "price_target": "N/A"
+        }
 
 def get_expert_report(agent_name: str, system_prompt: str, messages: list, api_key: str = None, selected_model: str = "auto") -> tuple[dict, list]:
     """Wrapper that runs tool loop, fetches structured report, and logs agent execution.

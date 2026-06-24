@@ -81,23 +81,22 @@ def risk_node(state: AgentState):
     active_agent = "synthesis"
     next_revision_count = revision_count
     
-    # Only HIGH severity critiques justify the cost of a full expert re-run.
+    # HIGH and MEDIUM severity critiques justify the cost of a full expert re-run.
     # Cross-talk is preserved in state and passed to synthesis for context, but does NOT trigger re-runs.
     # Max 2 revision loops: first pass catches real errors, second confirms corrections.
     if revision_count < 2:
-        high_severity_critiques = [
+        actionable_critiques = [
             c for c in critiques
-            if c.get("target_expert") in ["financial", "tech_product", "sentiment", "macro"]
-            and c.get("severity", "Low").lower() == "high"
+            if c.get("target_expert") in ["financial", "tech_product", "sentiment", "macro", "technical"]
+            and c.get("severity", "Low").lower() in ["high", "medium"]
         ]
-        flagged = list(set(c.get("target_expert") for c in high_severity_critiques))
+        flagged = list(set(c.get("target_expert") for c in actionable_critiques))
         if flagged:
             active_agent = ",".join(flagged)
             next_revision_count = revision_count + 1
-            log_msg = f"[Board Evaluation]: Completed peer audit (Revision Loop {next_revision_count}/2). {len(high_severity_critiques)} HIGH severity critiques detected targeting: {flagged}. Triggering targeted revision..."
+            log_msg = f"[Board Evaluation]: Completed peer audit (Revision Loop {next_revision_count}/2). {len(actionable_critiques)} HIGH/MEDIUM severity critiques detected targeting: {flagged}. Triggering targeted revision..."
         else:
-            medium_count = len([c for c in critiques if c.get("severity", "").lower() == "medium"])
-            log_msg = f"[Board Evaluation]: Completed board audit. No HIGH severity critiques found ({medium_count} medium/low flagged — acceptable). Proceeding to synthesis."
+            log_msg = f"[Board Evaluation]: Completed board audit. No HIGH or MEDIUM severity critiques found. Proceeding to synthesis."
     else:
         log_msg = f"[Board Evaluation]: Completed board audit. Maximum revision limit of 2 reached. Proceeding to final synthesis."
         

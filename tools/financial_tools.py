@@ -40,7 +40,12 @@ def fetch_financial_data(ticker: str) -> str:
             if v is None:
                 output.append(f"- {k}: N/A")
             elif k == "Market Cap" and isinstance(v, (int, float)):
-                output.append(f"- {k}: ${v / 1e9:.2f} Billion")
+                if v >= 1e12:
+                    output.append(f"- {k}: ${v / 1e12:.2f} Trillion")
+                elif v >= 1e9:
+                    output.append(f"- {k}: ${v / 1e9:.2f} Billion")
+                else:
+                    output.append(f"- {k}: ${v / 1e6:.2f} Million")
             elif "Margin" in k or "Growth" in k:
                 output.append(f"- {k}: {v * 100:.2f}%" if isinstance(v, float) else f"- {k}: {v}")
             elif k in ["Trailing P/E", "Forward P/E", "EPS (Trailing)", "Debt-to-Equity", "Current Ratio"] and isinstance(v, (int, float)):

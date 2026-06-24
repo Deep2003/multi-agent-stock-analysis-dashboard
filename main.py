@@ -16,7 +16,7 @@ import asyncio
 import time
 
 # Retrieve configuration from base layer
-model_name = os.environ.get("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct (w/ Fallbacks)")
+model_name = os.environ.get("OPENROUTER_MODEL", "auto")
 
 app_server = FastAPI(
     title="Agentic Stock Analyst Full-Stack Server",
@@ -150,7 +150,7 @@ async def stream_analysis(
                     metrics = {}
                     if financial_raw:
                         pe_match = re.search(r"Trailing P/E:\s*([0-9\.]+)", financial_raw)
-                        mc_match = re.search(r"Market Cap:\s*\$([0-9,]+)", financial_raw)
+                        mc_match = re.search(r"Market Cap:\s*\$([0-9,\.]+\s*[A-Za-z]+)", financial_raw)
                         eps_match = re.search(r"EPS \(Trailing\):\s*([0-9\.-]+)", financial_raw)
                         price_match = re.search(r"Current Price:\s*\$([0-9\.]+)", financial_raw)
                         sma50_match = re.search(r"50-Day SMA:\s*\$([0-9\.]+)", financial_raw)
@@ -163,6 +163,27 @@ async def stream_analysis(
                         if sma50_match: metrics["sma50"] = sma50_match.group(1)
                         if sma200_match: metrics["sma200"] = sma200_match.group(1)
 
+                    # Parse top news articles from sentiment_data to send to the frontend
+                    news_articles = []
+                    sentiment_raw = event.get("sentiment_data", "") or ""
+                    if sentiment_raw:
+                        lines = sentiment_raw.split("\n")
+                        for line in lines:
+                            # Match lines like: "1. Headline text (Source: Bloomberg, Date: 2024-06-20)"
+                            m = re.match(r"^\d+\.\s+(.+?)\s+\(Source:\s*(.+?),\s*Date:\s*(.+?)\)\s*$", line.strip())
+                            if m:
+                                news_articles.append({
+                                    "title": m.group(1).strip(),
+                                    "source": m.group(2).strip(),
+                                    "date": m.group(3).strip(),
+                                })
+                            elif re.match(r"^\d+\.", line.strip()):
+                                # Fallback: grab plain numbered lines without structured metadata
+                                clean = re.sub(r"^\d+\.\s*", "", line.strip())
+                                if clean:
+                                    news_articles.append({"title": clean, "source": "", "date": ""})
+                        news_articles = news_articles[:8]  # Cap at 8 articles
+
                     payload = {
                         "event": "update",
                         "agent": sender,
@@ -170,6 +191,7 @@ async def stream_analysis(
                         "message": last_msg.content,
                         "ticker": event.get("ticker", ""),
                         "metrics": metrics,
+                        "news_articles": news_articles,
                         "expert_reports": event.get("expert_reports", {}), # Push raw structured reports
                         "revision_count": event.get("revision_count", 0),  # Push revision count
                         "current_price": event.get("current_price", 0.0),

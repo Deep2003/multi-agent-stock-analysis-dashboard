@@ -30,21 +30,21 @@ def route_from_risk(state: AgentState):
         print(f"[Board Evaluation]: Max revision loops limit of 2 reached (Current: {revision_count}). Routing directly to Supervisor Synthesis...")
         return "synthesis"
         
-    # Only HIGH severity critiques justify the cost of a full expert re-run.
+    # Only HIGH and MEDIUM severity critiques justify the cost of a full expert re-run.
     # Cross-talk items are passed to experts during revision but are NOT revision triggers on their own.
     flagged = []
     for c in critiques:
         target = c.get("target_expert")
         severity = c.get("severity", "Low").lower()
-        if target in ["financial", "tech_product", "sentiment", "macro", "technical"] and severity == "high":
+        if target in ["financial", "tech_product", "sentiment", "macro", "technical"] and severity in ["high", "medium"]:
             flagged.append(target)
             
     flagged = list(set(flagged))
     if flagged:
-        print(f"[Board Evaluation]: HIGH severity critiques detected (Revision Loop {revision_count}/2). Routing flagged experts for revision: {flagged}...")
+        print(f"[Board Evaluation]: HIGH/MEDIUM severity critiques detected (Revision Loop {revision_count}/2). Routing flagged experts for revision: {flagged}...")
         return flagged  # Return list of flagged node names to run concurrently in parallel!
         
-    print("[Board Evaluation]: No HIGH severity critiques. Bypassing revision loop. Routing to synthesis...")
+    print("[Board Evaluation]: No HIGH or MEDIUM severity critiques. Bypassing revision loop. Routing to synthesis...")
     return "synthesis"
 
 
