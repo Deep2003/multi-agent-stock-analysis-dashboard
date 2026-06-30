@@ -324,6 +324,7 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
     const [averageRuntimes, setAverageRuntimes] = useState({});
     const [query, setQuery] = useState("");
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isQueued, setIsQueued] = useState(false);
     const [logs, setLogs] = useState([]);
     const [ticker, setTicker] = useState("");
     const [metrics, setMetrics] = useState({ price: "—", pe: "—", sma50: "—", sma200: "—", market_cap: "—" });
@@ -334,9 +335,12 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
     const [agentExecutionLogs, setAgentExecutionLogs] = useState([]);
     const [newsArticles, setNewsArticles] = useState([]);
     const [elapsedTime, setElapsedTime] = useState(0);
+    const [queueTime, setQueueTime] = useState(0);
     const [totalDuration, setTotalDuration] = useState(null);
     const timerRef = useRef(null);
-    const startTimeRef = useRef(null);
+    const queueStartRef = useRef(null);
+    const liveStartRef = useRef(null);
+    const isQueuedRef = useRef(false);
     const logEndRef = useRef(null);
     const [agentStates, setAgentStates] = useState({
       supervisor: "idle", prefetch: "idle", financial: "idle",
@@ -372,16 +376,25 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
     const runAnalysis = () => {
       if (!query.trim()) return;
       setIsAnalyzing(true);
+      setIsQueued(true);
+      isQueuedRef.current = true;
       setActiveTab("console");
       setLogs([{ type: "system", message: "Connecting to state machine..." }]);
       setTicker(""); setMetrics({ price: "—", pe: "—", sma50: "—", sma200: "—", market_cap: "—" });
       setReport(""); setExpertReports({}); setStreamingText({}); setAgentExecutionLogs([]); setNewsArticles([]);
-      setElapsedTime(0); setTotalDuration(null);
+      setElapsedTime(0); setQueueTime(0); setTotalDuration(null);
       setAgentStates({ supervisor: "thinking", prefetch: "idle", financial: "idle", tech_product: "idle", sentiment: "idle", macro: "idle", technical: "idle", risk: "idle", synthesis: "idle" });
 
-      startTimeRef.current = Date.now();
+      queueStartRef.current = Date.now();
+      liveStartRef.current = null;
       if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = setInterval(() => setElapsedTime((Date.now() - startTimeRef.current) / 1000), 100);
+      timerRef.current = setInterval(() => {
+        if (isQueuedRef.current) {
+          setQueueTime((Date.now() - queueStartRef.current) / 1000);
+        } else if (liveStartRef.current) {
+          setElapsedTime((Date.now() - liveStartRef.current) / 1000);
+        }
+      }, 100);
 
       const url = `/api/stream?query=${encodeURIComponent(query)}&api_key=${encodeURIComponent(apiKey)}&model=${encodeURIComponent(selectedModel)}`;
       const es = new EventSource(url);
@@ -389,8 +402,13 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
       es.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.event === "queue") {
+          setIsQueued(true);
+          isQueuedRef.current = true;
           setLogs(prev => [...prev, { type: "system", message: data.message }]);
         } else if (data.event === "start") {
+          setIsQueued(false);
+          isQueuedRef.current = false;
+          liveStartRef.current = Date.now();
           setLogs(prev => [...prev, { type: "system", message: data.message }]);
           fetchAgentLogs();
         } else if (data.event === "token") {
@@ -440,14 +458,16 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
           if (agent === "supervisor" && active_agent === "finish") setReport(message);
         } else if (data.event === "complete") {
           clearInterval(timerRef.current);
-          setTotalDuration(((Date.now() - startTimeRef.current) / 1000).toFixed(2));
+          const liveDuration = liveStartRef.current ? ((Date.now() - liveStartRef.current) / 1000).toFixed(2) : 0;
+          setTotalDuration(liveDuration);
           setLogs(prev => [...prev, { type: "success", message: data.message }]);
-          setIsAnalyzing(false); setActiveTab("summary"); fetchAgentLogs(); es.close();
+          setIsAnalyzing(false); setIsQueued(false); isQueuedRef.current = false; setActiveTab("summary"); fetchAgentLogs(); es.close();
         } else if (data.event === "error") {
           clearInterval(timerRef.current);
-          setTotalDuration(((Date.now() - startTimeRef.current) / 1000).toFixed(2));
+          const liveDuration = liveStartRef.current ? ((Date.now() - liveStartRef.current) / 1000).toFixed(2) : 0;
+          setTotalDuration(liveDuration);
           setLogs(prev => [...prev, { type: "error", message: `Execution failed: ${data.message}` }]);
-          setIsAnalyzing(false); fetchAgentLogs(); es.close();
+          setIsAnalyzing(false); setIsQueued(false); isQueuedRef.current = false; fetchAgentLogs(); es.close();
         }
       };
 
@@ -495,14 +515,21 @@ HTML_FRONTEND_CONTENT = """<!DOCTYPE html>
             {/* Status */}
             <div className="flex items-center gap-4 text-secondary">
               {isAnalyzing ? (
-                <span className="flex items-center gap-2 font-label-sm text-label-sm text-tertiary">
-                  <span className="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
-                  {elapsedTime.toFixed(1)}s
-                </span>
+                isQueued ? (
+                  <span className="flex items-center gap-2 font-label-sm text-label-sm text-amber-500 font-bold uppercase tracking-wider">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    IN QUEUE · {queueTime.toFixed(1)}s
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2 font-label-sm text-label-sm text-tertiary font-bold uppercase tracking-wider">
+                    <span className="w-2.5 h-2.5 rounded-full bg-tertiary animate-pulse"></span>
+                    LIVE · {elapsedTime.toFixed(1)}s
+                  </span>
+                )
               ) : totalDuration ? (
                 <span className="flex items-center gap-2 font-label-sm text-label-sm text-tertiary">
                   <span className="w-2 h-2 rounded-full bg-tertiary"></span>
-                  Done in {totalDuration}s
+                  Done in {totalDuration}s {queueTime > 0 ? `(Queued: ${queueTime.toFixed(1)}s)` : ""}
                 </span>
               ) : (
                 <span className="font-label-sm text-label-sm text-outline uppercase tracking-widest">READY</span>
